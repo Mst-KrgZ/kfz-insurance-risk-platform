@@ -1,0 +1,4 @@
+openml
+pandas==2.2.3
+numpy
+python-dotenv
