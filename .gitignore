@@ -1,15 +1,8 @@
-# Python sanal ortamı
 .venv/
-
-# Python geçici dosyaları
 __pycache__/
 *.pyc
-
-# Ortam değişkenleri ve gizli bilgiler
 .env
-
-# Jupyter geçici dosyaları
 .ipynb_checkpoints/
-
-# VS Code kullanıcı ayarları
 .vscode/
+data/raw/*.pq
+data/raw/*.parquet
