@@ -6,3 +6,4 @@ __pycache__/
 .vscode/
 data/raw/*.pq
 data/raw/*.parquet
+data/raw/*.arff
