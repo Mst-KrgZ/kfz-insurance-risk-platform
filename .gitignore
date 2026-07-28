@@ -7,3 +7,5 @@ __pycache__/
 data/raw/*.pq
 data/raw/*.parquet
 data/raw/*.arff
+# Generated ingestion outputs and logs
+data/output/
