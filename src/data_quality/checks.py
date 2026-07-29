@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 import pandas as pd
 
 
@@ -75,6 +76,8 @@ def save_check_results(
         exist_ok=True,
     )
 
+    run_id = str(uuid4())
+    
     executed_at_utc = datetime.now(
         timezone.utc,
     ).isoformat()
@@ -84,8 +87,37 @@ def save_check_results(
         encoding="utf-8",
     ) as output_file:
         for result in results:
+            if result["status"] == "FAIL":
+                affected_rows = result["failed_rows"]
+                affected_pct = result["failure_rate"]
+            elif result["status"] == "WARN":
+                affected_rows = result["warning_rows"]
+                affected_pct = result["warning_rate"]
+            else:
+                affected_rows = 0
+                affected_pct = 0.0
+                
+            severity = {
+                "PASS": "INFO",
+                "WARN": "WARNING",
+                "FAIL": "ERROR",
+            }[result["status"]]
+            
+            description = (
+                f"Data-quality check '{result['check_name']}' "
+                f"on '{result['dataset_name']}' completed with "
+                f"status {result['status']}."
+            )
+                
             stored_result = {
+                "run_id": run_id,
                 "executed_at_utc": executed_at_utc,
+                "table_name": result["dataset_name"],
+                "affected_rows": affected_rows,
+                "affected_pct": affected_pct,
+                "severity": severity,
+                "executed_at": executed_at_utc,
+                "description": description,
                 **result,
             }
 
@@ -252,10 +284,32 @@ def check_claim_amount_bounds(
     dataset_name: str = "severity",
 ) -> dict[str, Any]:
     """Check claim amounts for zero or negative values."""
+    
+    validate_required_columns(
+        df,
+        {"IDpol", "ClaimAmount"},
+        dataset_name,
+    )
+
+    policy_claim_totals = (
+        df.groupby(
+            "IDpol",
+            as_index=False,
+        )
+        .agg(
+            total_claim_amount=(
+                "ClaimAmount",
+                "sum",
+            )
+        )
+    )    
 
     claim_amounts = df["ClaimAmount"]
 
     non_positive_mask = claim_amounts <= 0
+    non_positive_total_mask = (
+        policy_claim_totals["total_claim_amount"] <= 0
+    )
     failed_rows = int(non_positive_mask.sum())
 
     return build_check_result(
@@ -281,6 +335,17 @@ def check_claim_amount_bounds(
             "p999_claim_amount": round(
                 float(claim_amounts.quantile(0.999)),
                 2,
+            ),
+            "minimum_total_claim_amount": round(
+                float(
+                    policy_claim_totals[
+                        "total_claim_amount"
+                    ].min()
+                ),
+                2,
+            ),
+            "non_positive_total_claim_policies": int(
+                non_positive_total_mask.sum()
             ),
         },
     )
