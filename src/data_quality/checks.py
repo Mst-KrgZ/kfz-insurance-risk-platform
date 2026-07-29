@@ -19,19 +19,46 @@ def build_check_result(
     passed: bool,
     failed_rows: int,
     total_rows: int,
+    warning_rows: int = 0,
+    warning_total_rows: int | None = None,
     details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a standardized result for a data-quality check."""
 
-    failure_rate = failed_rows / total_rows if total_rows > 0 else 0.0
+    failure_rate = (
+        failed_rows / total_rows
+        if total_rows > 0
+        else 0.0
+    )
+
+    warning_denominator = (
+        warning_total_rows
+        if warning_total_rows is not None
+        else total_rows
+    )
+
+    warning_rate = (
+        warning_rows / warning_denominator
+        if warning_denominator > 0
+        else 0.0
+    )
+
+    if not passed or failed_rows > 0:
+        status = "FAIL"
+    elif warning_rows > 0:
+        status = "WARN"
+    else:
+        status = "PASS"
 
     return {
         "check_name": check_name,
         "dataset_name": dataset_name,
-        "status": "PASS" if passed else "FAIL",
+        "status": status,
         "failed_rows": failed_rows,
+        "warning_rows": warning_rows,
         "total_rows": total_rows,
         "failure_rate": round(failure_rate, 6),
+        "warning_rate": round(warning_rate, 6),
         "details": details or {},
     }
 
@@ -158,14 +185,22 @@ def check_claim_number_bounds(
     failed_mask = (
         negative_mask
         | non_integer_mask
-        | above_threshold_mask
     )
+
+    warning_mask = (
+        above_threshold_mask
+        & ~failed_mask
+    )
+
+    failed_rows = int(failed_mask.sum())
+    warning_rows = int(warning_mask.sum())
 
     return build_check_result(
         check_name="claim_number_bounds",
         dataset_name=dataset_name,
-        passed=not failed_mask.any(),
-        failed_rows=int(failed_mask.sum()),
+        passed=failed_rows == 0,
+        failed_rows=failed_rows,
+        warning_rows=warning_rows,
         total_rows=len(df),
         details={
             "minimum_claim_number": float(claim_numbers.min()),
@@ -284,6 +319,57 @@ def check_frequency_severity_consistency(
     )
 
     failed_rows = int(failed_mask.sum())
+    
+    claim_policy_mask = (
+        claim_consistency["ClaimNb"] > 0
+    )
+
+    claim_free_policy_mask = (
+        claim_consistency["ClaimNb"] == 0
+    )
+
+    claim_policies = int(
+        claim_policy_mask.sum()
+    )
+
+    claim_free_policies = int(
+        claim_free_policy_mask.sum()
+    )
+
+    claim_policies_with_any_severity = int(
+        (
+            claim_policy_mask
+            & (
+                claim_consistency["severity_claim_count"] > 0
+            )
+        ).sum()
+    )
+
+    fully_consistent_claim_policies = int(
+        (
+            claim_policy_mask
+            & (
+                claim_consistency["ClaimNb"]
+                == claim_consistency["severity_claim_count"]
+            )
+        ).sum()
+    )
+
+    claim_policies_without_severity = int(
+        missing_severity_mask.sum()
+    )
+
+    missing_severity_rate_among_claim_policies = (
+        claim_policies_without_severity / claim_policies
+        if claim_policies > 0
+        else 0.0
+    )
+
+    claim_free_policy_rate = (
+        claim_free_policies / len(frequency_df)
+        if len(frequency_df) > 0
+        else 0.0
+    )
 
     return build_check_result(
         check_name="frequency_severity_consistency",
@@ -300,6 +386,25 @@ def check_frequency_severity_consistency(
             ),
             "different_positive_claim_counts": int(
                 different_positive_counts_mask.sum()
+            ),
+            "claim_policies": claim_policies,
+            "claim_free_policies": claim_free_policies,
+            "claim_free_policy_rate": round(
+                claim_free_policy_rate,
+                6,
+            ),
+            "claim_policies_with_any_severity": (
+                claim_policies_with_any_severity
+            ),
+            "fully_consistent_claim_policies": (
+                fully_consistent_claim_policies
+            ),
+            "claim_policies_without_severity": (
+                claim_policies_without_severity
+            ),
+            "missing_severity_rate_among_claim_policies": round(
+                missing_severity_rate_among_claim_policies,
+                6,
             ),
         },
     )
@@ -401,13 +506,17 @@ def check_duplicate_records(
         (severity_duplicate_groups > 1).sum()
     )
 
+    warning_rows = severity_exact_duplicates
     failed_rows = frequency_duplicate_id_rows
+    warning_rows = severity_exact_duplicates
 
     return build_check_result(
         check_name="duplicate_records",
         dataset_name=dataset_name,
         passed=failed_rows == 0,
         failed_rows=failed_rows,
+        warning_rows=warning_rows,
+        warning_total_rows=len(severity_df),
         total_rows=len(frequency_df),
         details={
             "frequency_exact_duplicate_rows": (
