@@ -35,6 +35,7 @@ def build_check_result(
         "details": details or {},
     }
 
+
 def load_datasets() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load the frequency and severity datasets from the raw-data directory."""
 
@@ -53,6 +54,25 @@ def load_datasets() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     return frequency_df, severity_df
 
+
+def validate_required_columns(
+    df: pd.DataFrame,
+    required_columns: set[str],
+    dataset_name: str,
+) -> None:
+    """Raise an error when required dataset columns are missing."""
+
+    missing_columns = sorted(
+        required_columns - set(df.columns)
+    )
+
+    if missing_columns:
+        raise KeyError(
+            f"Dataset '{dataset_name}' is missing required columns: "
+            f"{missing_columns}"
+        )
+        
+        
 def check_missing_values(
     df: pd.DataFrame,
     dataset_name: str,
@@ -78,14 +98,18 @@ def check_missing_values(
         details={"missing_by_column": missing_columns},
     )
 
+
 def check_exposure_bounds(
     df: pd.DataFrame,
     dataset_name: str,
 ) -> dict[str, Any]:
     """Check whether exposure values are greater than 0 and at most 1."""
 
-    if "Exposure" not in df.columns:
-        raise KeyError("Required column was not found: Exposure")
+    validate_required_columns(
+        df,
+        {"Exposure"},
+        dataset_name,
+    )
 
     invalid_mask = (
         df["Exposure"].isna()
@@ -111,11 +135,20 @@ def check_exposure_bounds(
         details=details,
     )
 
+
 def check_claim_number_bounds(
     df: pd.DataFrame,
     dataset_name: str = "frequency",
     high_claim_threshold: int = 4,
-) -> dict:
+) -> dict[str, Any]:
+    """Check claim numbers for negative, non-integer, and high values."""
+
+    validate_required_columns(
+        df,
+        {"ClaimNb"},
+        dataset_name,
+    )
+
     claim_numbers = df["ClaimNb"]
 
     negative_mask = claim_numbers < 0
@@ -143,11 +176,14 @@ def check_claim_number_bounds(
             "above_threshold_rows": int(above_threshold_mask.sum()),
         },
     )
+  
     
 def check_claim_amount_bounds(
     df: pd.DataFrame,
     dataset_name: str = "severity",
-) -> dict:
+) -> dict[str, Any]:
+    """Check claim amounts for zero or negative values."""
+
     claim_amounts = df["ClaimAmount"]
 
     non_positive_mask = claim_amounts <= 0
@@ -160,44 +196,44 @@ def check_claim_amount_bounds(
         failed_rows=failed_rows,
         total_rows=len(df),
         details={
-            "minimum_claim_amount": float(claim_amounts.min()),
-            "maximum_claim_amount": float(claim_amounts.max()),
-            "non_positive_rows": failed_rows,
-            "p99_claim_amount": float(
-                claim_amounts.quantile(0.99)
+            "minimum_claim_amount": round(
+                float(claim_amounts.min()),
+                2,
             ),
-            "p999_claim_amount": float(
-                claim_amounts.quantile(0.999)
+            "maximum_claim_amount": round(
+                float(claim_amounts.max()),
+                2,
+            ),
+            "non_positive_rows": failed_rows,
+            "p99_claim_amount": round(
+                float(claim_amounts.quantile(0.99)),
+                2,
+            ),
+            "p999_claim_amount": round(
+                float(claim_amounts.quantile(0.999)),
+                2,
             ),
         },
     )
 
-if __name__ == "__main__":
-    frequency_df, severity_df = load_datasets()
 
-    frequency_missing_result = check_missing_values(
+def check_frequency_severity_consistency(
+    frequency_df: pd.DataFrame,
+    severity_df: pd.DataFrame,
+    dataset_name: str = "frequency_severity",
+) -> dict[str, Any]:
+    """Compare policy claim counts with available severity records."""
+
+    validate_required_columns(
         frequency_df,
-        dataset_name="frequency",
+        {"IDpol", "ClaimNb"},
+        "frequency",
     )
 
-    severity_missing_result = check_missing_values(
+    validate_required_columns(
         severity_df,
-        dataset_name="severity",
-    )
-
-    exposure_result = check_exposure_bounds(
-        frequency_df,
-        dataset_name="frequency",
-    )
-
-    claim_number_result = check_claim_number_bounds(
-        frequency_df,
-        dataset_name="frequency",
-    )
-    
-    claim_amount_result = check_claim_amount_bounds(
-    severity_df,
-    dataset_name="severity",
+        {"IDpol"},
+        "severity",
     )
 
     severity_claim_counts = (
@@ -222,29 +258,327 @@ if __name__ == "__main__":
         .astype(int)
     )
 
-    mismatch_mask = (
-        claim_consistency["ClaimNb"]
-        != claim_consistency["severity_claim_count"]
+    missing_severity_mask = (
+        (claim_consistency["ClaimNb"] > 0)
+        & (claim_consistency["severity_claim_count"] == 0)
     )
 
-    print("\nFrequency-Severity Consistency:")
-    print("Mismatched policies:", int(mismatch_mask.sum()))
-
-    print("\nFirst 10 Mismatches:")
-    print(
-        claim_consistency
-        .loc[mismatch_mask]
-        .head(10)
-        .to_string(index=False)
+    unexpected_severity_mask = (
+        (claim_consistency["ClaimNb"] == 0)
+        & (claim_consistency["severity_claim_count"] > 0)
     )
 
-    results = [
-        frequency_missing_result,
-        severity_missing_result,
-        exposure_result,
-        claim_number_result,
-        claim_amount_result,
+    different_positive_counts_mask = (
+        (claim_consistency["ClaimNb"] > 0)
+        & (claim_consistency["severity_claim_count"] > 0)
+        & (
+            claim_consistency["ClaimNb"]
+            != claim_consistency["severity_claim_count"]
+        )
+    )
+
+    failed_mask = (
+        missing_severity_mask
+        | unexpected_severity_mask
+        | different_positive_counts_mask
+    )
+
+    failed_rows = int(failed_mask.sum())
+
+    return build_check_result(
+        check_name="frequency_severity_consistency",
+        dataset_name=dataset_name,
+        passed=failed_rows == 0,
+        failed_rows=failed_rows,
+        total_rows=len(frequency_df),
+        details={
+            "claims_without_severity_rows": int(
+                missing_severity_mask.sum()
+            ),
+            "severity_rows_without_claims": int(
+                unexpected_severity_mask.sum()
+            ),
+            "different_positive_claim_counts": int(
+                different_positive_counts_mask.sum()
+            ),
+        },
+    )
+
+
+def check_orphan_severity_records(
+    frequency_df: pd.DataFrame,
+    severity_df: pd.DataFrame,
+    dataset_name: str = "severity",
+) -> dict[str, Any]:
+    """Check for severity records without a matching frequency policy."""
+
+    validate_required_columns(
+        frequency_df,
+        {"IDpol"},
+        "frequency",
+    )
+
+    validate_required_columns(
+        severity_df,
+        {"IDpol", "ClaimAmount"},
+        "severity",
+    )
+
+    orphan_mask = ~severity_df["IDpol"].isin(
+        frequency_df["IDpol"]
+    )
+
+    orphan_rows = severity_df.loc[orphan_mask]
+    failed_rows = int(orphan_mask.sum())
+
+    return build_check_result(
+        check_name="orphan_severity_records",
+        dataset_name=dataset_name,
+        passed=failed_rows == 0,
+        failed_rows=failed_rows,
+        total_rows=len(severity_df),
+        details={
+            "orphan_unique_policies": int(
+                orphan_rows["IDpol"].nunique()
+            ),
+            "orphan_claim_amount_total": round(
+                float(orphan_rows["ClaimAmount"].sum()),
+                2,
+            ),
+        },
+    )
+
+
+def check_duplicate_records(
+    frequency_df: pd.DataFrame,
+    severity_df: pd.DataFrame,
+    dataset_name: str = "frequency_severity",
+) -> dict[str, Any]:
+    """Check frequency duplicates and report potential severity duplicates."""
+    
+    validate_required_columns(
+        frequency_df,
+        {"IDpol"},
+        "frequency",
+    )
+
+    validate_required_columns(
+        severity_df,
+        {"IDpol", "ClaimAmount"},
+        "severity",
+    )
+
+    frequency_exact_duplicates = int(
+        frequency_df.duplicated(keep="first").sum()
+    )
+
+    frequency_duplicate_id_mask = (
+        frequency_df["IDpol"].duplicated(keep=False)
+    )
+
+    frequency_duplicate_id_rows = int(
+        frequency_duplicate_id_mask.sum()
+    )
+
+    frequency_duplicate_unique_ids = int(
+        frequency_df.loc[
+            frequency_duplicate_id_mask,
+            "IDpol",
+        ].nunique()
+    )
+
+    severity_exact_duplicates = int(
+        severity_df.duplicated(keep="first").sum()
+    )
+
+    severity_duplicate_groups = (
+        severity_df
+        .groupby(["IDpol", "ClaimAmount"])
+        .size()
+    )
+
+    severity_duplicate_group_count = int(
+        (severity_duplicate_groups > 1).sum()
+    )
+
+    failed_rows = frequency_duplicate_id_rows
+
+    return build_check_result(
+        check_name="duplicate_records",
+        dataset_name=dataset_name,
+        passed=failed_rows == 0,
+        failed_rows=failed_rows,
+        total_rows=len(frequency_df),
+        details={
+            "frequency_exact_duplicate_rows": (
+                frequency_exact_duplicates
+            ),
+            "frequency_duplicate_id_rows": (
+                frequency_duplicate_id_rows
+            ),
+            "frequency_duplicate_unique_ids": (
+                frequency_duplicate_unique_ids
+            ),
+            "severity_potential_duplicate_rows": (
+                severity_exact_duplicates
+            ),
+            "severity_potential_duplicate_groups": (
+                severity_duplicate_group_count
+            ),
+        },
+    )
+
+
+def check_join_cardinality(
+    frequency_df: pd.DataFrame,
+    severity_df: pd.DataFrame,
+    dataset_name: str = "frequency_severity",
+) -> dict[str, Any]:
+    """Check whether the frequency-severity join follows one-to-many cardinality."""
+    
+    validate_required_columns(
+        frequency_df,
+        {"IDpol"},
+        "frequency",
+    )
+
+    validate_required_columns(
+        severity_df,
+        {"IDpol", "ClaimAmount"},
+        "severity",
+    )    
+
+    frequency_with_severity_mask = (
+        frequency_df["IDpol"].isin(severity_df["IDpol"])
+    )
+
+    matched_severity_mask = (
+        severity_df["IDpol"].isin(frequency_df["IDpol"])
+    )
+
+    frequency_with_severity_rows = int(
+        frequency_with_severity_mask.sum()
+    )
+
+    frequency_without_severity_rows = int(
+        (~frequency_with_severity_mask).sum()
+    )
+
+    matched_severity_rows = int(
+        matched_severity_mask.sum()
+    )
+
+    expected_joined_rows = (
+        frequency_without_severity_rows
+        + matched_severity_rows
+    )
+
+    joined_df = frequency_df[["IDpol"]].merge(
+        severity_df[["IDpol", "ClaimAmount"]],
+        on="IDpol",
+        how="left",
+    )
+
+    actual_joined_rows = len(joined_df)
+
+    unexpected_extra_rows = (
+        actual_joined_rows - expected_joined_rows
+    )
+
+    frequency_duplicate_id_rows = int(
+        frequency_df["IDpol"]
+        .duplicated(keep=False)
+        .sum()
+    )
+
+    failed_rows = max(
+        abs(unexpected_extra_rows),
+        frequency_duplicate_id_rows,
+    )
+
+    return build_check_result(
+        check_name="join_cardinality",
+        dataset_name=dataset_name,
+        passed=failed_rows == 0,
+        failed_rows=failed_rows,
+        total_rows=actual_joined_rows,
+        details={
+            "expected_relationship": "one_to_many",
+            "frequency_rows_with_severity": (
+                frequency_with_severity_rows
+            ),
+            "frequency_rows_without_severity": (
+                frequency_without_severity_rows
+            ),
+            "matched_severity_rows": matched_severity_rows,
+            "expected_joined_rows": expected_joined_rows,
+            "actual_joined_rows": actual_joined_rows,
+            "unexpected_extra_rows": unexpected_extra_rows,
+            "frequency_duplicate_id_rows": (
+                frequency_duplicate_id_rows
+            ),
+        },
+    )
+ 
+    
+def run_all_checks(
+    frequency_df: pd.DataFrame,
+    severity_df: pd.DataFrame,
+) -> list[dict[str, Any]]:
+    """Run all data-quality checks and return their results."""
+
+    return [
+        check_missing_values(
+            frequency_df,
+            dataset_name="frequency",
+        ),
+        check_missing_values(
+            severity_df,
+            dataset_name="severity",
+        ),
+        check_exposure_bounds(
+            frequency_df,
+            dataset_name="frequency",
+        ),
+        check_claim_number_bounds(
+            frequency_df,
+            dataset_name="frequency",
+        ),
+        check_claim_amount_bounds(
+            severity_df,
+            dataset_name="severity",
+        ),
+        check_frequency_severity_consistency(
+            frequency_df,
+            severity_df,
+            dataset_name="frequency_severity",
+        ),
+        check_orphan_severity_records(
+            frequency_df,
+            severity_df,
+            dataset_name="severity",
+        ),
+        check_duplicate_records(
+            frequency_df,
+            severity_df,
+            dataset_name="frequency_severity",
+        ),
+        check_join_cardinality(
+            frequency_df,
+            severity_df,
+            dataset_name="frequency_severity",
+        ),
     ]
+
+
+if __name__ == "__main__":
+    frequency_df, severity_df = load_datasets()
+
+    results = run_all_checks(
+        frequency_df,
+        severity_df,
+    )
 
     for result in results:
         print(result)
+        
