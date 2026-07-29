@@ -1,13 +1,16 @@
 """Systematic data-quality checks for the freMTPL2 datasets."""
 
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
 import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+OUTPUT_DATA_DIR = PROJECT_ROOT / "data" / "output"
+DQ_RESULTS_FILE = OUTPUT_DATA_DIR / "dq_check_results.jsonl"
 
 FREQUENCY_FILE = RAW_DATA_DIR / "freMTPL2freq.pq"
 SEVERITY_FILE = RAW_DATA_DIR / "freMTPL2sev.pq"
@@ -62,6 +65,37 @@ def build_check_result(
         "details": details or {},
     }
 
+def save_check_results(
+    results: list[dict[str, Any]],
+) -> None:
+    """Append data-quality check results to a JSONL file."""
+
+    OUTPUT_DATA_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    executed_at_utc = datetime.now(
+        timezone.utc,
+    ).isoformat()
+
+    with DQ_RESULTS_FILE.open(
+        "a",
+        encoding="utf-8",
+    ) as output_file:
+        for result in results:
+            stored_result = {
+                "executed_at_utc": executed_at_utc,
+                **result,
+            }
+
+            output_file.write(
+                json.dumps(
+                    stored_result,
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
 
 def load_datasets() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load the frequency and severity datasets from the raw-data directory."""
@@ -687,6 +721,8 @@ if __name__ == "__main__":
         frequency_df,
         severity_df,
     )
+    
+    save_check_results(results)
 
     for result in results:
         print(result)

@@ -5,6 +5,7 @@
   "datasets": [
     {
       "openml_dataset_id": 41214,
+      "dataset_version": 1,
       "dataset_name": "freMTPL2freq",
       "local_file": "data/raw/freMTPL2freq.pq",
       "source_url": "https://data.openml.org/datasets/0004/41214/dataset_41214.pq",
@@ -13,6 +14,7 @@
     },
     {
       "openml_dataset_id": 41215,
+      "dataset_version": 1,
       "dataset_name": "freMTPL2sev",
       "local_file": "data/raw/freMTPL2sev.pq",
       "source_url": "https://data.openml.org/datasets/0004/41215/dataset_41215.pq",

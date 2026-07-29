@@ -1,4 +1,3 @@
-
 # Statusbericht – Woche 1
 
 **Projekt:** Kfz Insurance Risk & Pure Premium Intelligence Platform
@@ -36,36 +35,6 @@ Die explorative Datenanalyse, die Data-Quality-Prüfungen, die Datenbereinigung 
 - Datenbankverbindung mit DBeaver erfolgreich getestet
 - Verbindung zwischen Power BI und PostgreSQL erfolgreich getestet
 - Aktuellen Projektstand und nächste Schritte in `NEXT_STEPS.md` dokumentiert
-
-## 3. Technische Probleme und Lösungen
-
-### OpenML-Serverfehler
-
-Beim Zugriff auf die OpenML-Metadaten und Download-Endpunkte trat wiederholt ein HTTP-504-Fehler auf.
-
-**Lösung:**
-Die offiziellen statischen Parquet-Dateien wurden direkt heruntergeladen. Herkunft, Dateigrößen und SHA256-Prüfsummen wurden in `data/raw/source_manifest.json` dokumentiert.
-
-### Probleme mit Python-Bibliotheken
-
-Windows Smart App Control blockierte einzelne DLL-Dateien von `pandas` und `pyarrow`. Dadurch konnten bestimmte Paketversionen nicht zuverlässig verwendet werden.
-
-**Lösung:**
-`pyarrow` wurde entfernt, `pandas` wurde auf Version `2.2.3` festgelegt und für das Lesen der Parquet-Dateien wird aktuell `fastparquet` verwendet.
-
-### Fehlgeschlagene PostgreSQL-Initialisierung
-
-Bei der ersten PostgreSQL-Installation wurde `initdb.exe` durch Smart App Control blockiert. Deshalb wurde kein Datenbank-Cluster initialisiert und kein PostgreSQL-Dienst erstellt.
-
-**Lösung:**
-Smart App Control wurde deaktiviert, der Rechner neu gestartet und die unvollständige PostgreSQL-Installation vollständig entfernt. Anschließend wurde PostgreSQL erneut mit Administratorrechten installiert. Der Dienst `postgresql-x64-17` läuft seitdem erfolgreich.
-
-### Power-BI-Test ohne vorhandene Tabellen
-
-Die Verbindung zwischen Power BI und PostgreSQL konnte erfolgreich hergestellt werden. Da in der Datenbank noch keine Tabellen vorhanden sind, wurden noch keine Projektdaten geladen.
-
-Bei einem Test wurde nur das technische Navigationselement der PostgreSQL-Verbindung geladen. Dieses enthielt keine Versicherungsdaten und wurde nicht gespeichert.
-
 
 ## 3. Technische Probleme und Lösungen
 
