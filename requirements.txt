@@ -4,3 +4,4 @@ numpy
 python-dotenv
 fastparquet==2026.5.0
 ipykernel
+psycopg[binary]==3.3.4

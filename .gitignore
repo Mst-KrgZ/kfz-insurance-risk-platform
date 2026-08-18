@@ -9,3 +9,7 @@ data/raw/*.parquet
 data/raw/*.arff
 # Generated ingestion outputs and logs
 data/output/
+
+# Generated curated datasets
+data/processed/*.pq
+data/processed/*.parquet
