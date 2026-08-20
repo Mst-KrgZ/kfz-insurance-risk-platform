@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS fact_claim (
     claim_amount NUMERIC(12,2) NOT NULL
 );
 
+
 CREATE TABLE IF NOT EXISTS pipeline_runs (
     pipeline_run_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     run_utc TIMESTAMPTZ NOT NULL,
@@ -68,6 +69,7 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     severity_row_count INTEGER,
     validations JSONB NOT NULL
 );
+
 
 CREATE TABLE IF NOT EXISTS dq_check_results (
     dq_result_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -94,4 +96,17 @@ CREATE TABLE IF NOT EXISTS dq_check_results (
 
     description TEXT,
     details JSONB NOT NULL
+);
+
+
+CREATE TABLE IF NOT EXISTS policy_frequency_predictions (
+    idpol BIGINT NOT NULL,
+    claim_nb INTEGER NOT NULL,
+    exposure DOUBLE PRECISION NOT NULL,
+    predicted_claim_frequency DOUBLE PRECISION NOT NULL,
+    predicted_claim_count DOUBLE PRECISION NOT NULL,
+    model_name VARCHAR(100) NOT NULL,
+    scored_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (idpol, model_name)
 );

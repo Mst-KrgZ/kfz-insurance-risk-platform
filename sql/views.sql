@@ -118,3 +118,38 @@ SELECT
 
 FROM ranked_checks
 WHERE row_num = 1;
+
+CREATE OR REPLACE VIEW vw_frequency_prediction_analysis AS
+SELECT
+    p.idpol,
+    pr.model_name,
+    pr.scored_at,
+
+    p.claim_nb,
+    p.exposure,
+
+    p.area,
+    p.veh_power,
+    p.veh_age,
+    p.driv_age,
+    p.bonus_malus,
+    p.veh_brand,
+    p.veh_gas,
+    p.density,
+    p.region,
+
+    p.driver_age_group,
+    p.vehicle_age_group,
+    p.bonus_malus_segment,
+
+    p.observed_claim_frequency,
+
+    pr.predicted_claim_frequency,
+    pr.predicted_claim_count,
+
+    p.claim_nb - pr.predicted_claim_count
+        AS claim_count_residual
+
+FROM vw_policy_risk_base AS p
+INNER JOIN policy_frequency_predictions AS pr
+    ON p.idpol = pr.idpol;
