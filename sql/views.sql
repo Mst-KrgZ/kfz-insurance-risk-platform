@@ -153,3 +153,83 @@ SELECT
 FROM vw_policy_risk_base AS p
 INNER JOIN policy_frequency_predictions AS pr
     ON p.idpol = pr.idpol;
+
+
+CREATE OR REPLACE VIEW vw_model_prediction_analysis AS
+WITH latest_run AS (
+    SELECT
+        prediction_run_id
+    FROM model_predictions
+    GROUP BY prediction_run_id
+    ORDER BY MAX(scored_at) DESC
+    LIMIT 1
+)
+
+SELECT
+    p.idpol,
+
+    pr.prediction_run_id,
+    pr.frequency_model_version,
+    pr.severity_model_version,
+    pr.scored_at,
+
+    p.claim_nb,
+    p.exposure,
+
+    p.area,
+    p.veh_power,
+    p.veh_age,
+    p.driv_age,
+    p.bonus_malus,
+    p.veh_brand,
+    p.veh_gas,
+    p.density,
+    p.region,
+
+    p.driver_age_group,
+    p.vehicle_age_group,
+    p.bonus_malus_segment,
+    p.log_density,
+
+    p.total_claim_amount,
+    p.observed_claim_frequency,
+    p.observed_severity,
+    p.observed_pure_premium,
+
+    p.exposure_capped,
+    p.high_claim_count,
+    p.claim_count_mismatch,
+    p.missing_severity,
+
+    pr.predicted_frequency,
+    pr.predicted_severity,
+    pr.predicted_pure_premium,
+
+    pr.exposure_used,
+    pr.expected_claim_count,
+    pr.expected_claim_amount,
+
+    p.claim_nb - pr.expected_claim_count
+        AS claim_count_residual,
+
+    CASE
+        WHEN p.total_claim_amount IS NOT NULL
+        THEN p.total_claim_amount - pr.expected_claim_amount
+        ELSE NULL
+    END AS claim_amount_residual,
+
+    CASE
+        WHEN p.total_claim_amount IS NOT NULL
+        THEN TRUE
+        ELSE FALSE
+    END AS has_observed_claim_amount
+
+FROM vw_policy_risk_base AS p
+
+INNER JOIN model_predictions AS pr
+    ON p.idpol = pr.idpol
+
+INNER JOIN latest_run AS lr
+    ON pr.prediction_run_id = lr.prediction_run_id;
+
+    

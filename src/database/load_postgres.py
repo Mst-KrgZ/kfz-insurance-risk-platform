@@ -40,6 +40,13 @@ DQ_CHECK_RESULTS_FILE = (
     / "dq_check_results.jsonl"
 )
 
+MODEL_PREDICTIONS_FILE = (
+    PROJECT_ROOT
+    / "data"
+    / "output"
+    / "model_predictions.pq"
+)
+
 def test_connection(
     connection: psycopg.Connection,
 ) -> None:
@@ -424,6 +431,83 @@ def load_dq_check_results(
     return len(dq_df)
 
 
+def load_model_predictions(
+    connection: psycopg.Connection,
+) -> int:
+    """Load final policy-level model predictions into PostgreSQL."""
+
+    predictions_df = pd.read_parquet(
+        MODEL_PREDICTIONS_FILE
+    ).copy()
+
+    predictions_df["idpol"] = (
+        predictions_df["idpol"].astype("int64")
+    )
+
+    predictions_df["scored_at"] = pd.to_datetime(
+        predictions_df["scored_at"],
+        utc=True,
+    )
+
+    prediction_run_ids = (
+        predictions_df["prediction_run_id"]
+        .drop_duplicates()
+        .tolist()
+    )
+
+    if len(prediction_run_ids) != 1:
+        raise ValueError(
+            "Expected exactly one prediction_run_id "
+            "in model_predictions.pq."
+        )
+
+    prediction_run_id = prediction_run_ids[0]
+
+    buffer = StringIO()
+
+    predictions_df.to_csv(
+        buffer,
+        index=False,
+        header=False,
+    )
+
+    buffer.seek(0)
+
+    with connection.cursor() as cursor:
+        # Keep historical scoring runs, but make the
+        # current run reloadable without duplicates.
+        cursor.execute(
+            """
+            DELETE FROM model_predictions
+            WHERE prediction_run_id = %s::uuid;
+            """,
+            (prediction_run_id,),
+        )
+
+        with cursor.copy(
+            """
+            COPY model_predictions (
+                idpol,
+                prediction_run_id,
+                frequency_model_version,
+                severity_model_version,
+                predicted_frequency,
+                predicted_severity,
+                predicted_pure_premium,
+                exposure_used,
+                expected_claim_count,
+                expected_claim_amount,
+                scored_at
+            )
+            FROM STDIN
+            WITH (FORMAT CSV)
+            """
+        ) as copy:
+            copy.write(buffer.getvalue())
+
+    return len(predictions_df)
+
+
 if __name__ == "__main__":
     password = getpass("PostgreSQL password: ")
 
@@ -450,6 +534,9 @@ if __name__ == "__main__":
         loaded_dq_check_rows = load_dq_check_results(
             connection
         )
+        loaded_model_prediction_rows = load_model_predictions(
+            connection
+        )
 
         print(
             "Loaded stg_policy rows:",
@@ -474,4 +561,8 @@ if __name__ == "__main__":
         print(
             "Loaded dq_check_results rows:",
             loaded_dq_check_rows,
+        )
+        print(
+            "Loaded model_predictions rows:",
+            loaded_model_prediction_rows,
         )

@@ -110,3 +110,53 @@ CREATE TABLE IF NOT EXISTS policy_frequency_predictions (
 
     PRIMARY KEY (idpol, model_name)
 );
+
+
+-- Final model predictions
+
+
+CREATE TABLE IF NOT EXISTS model_predictions (
+    idpol BIGINT NOT NULL,
+    prediction_run_id UUID NOT NULL,
+
+    frequency_model_version VARCHAR(100) NOT NULL,
+    severity_model_version VARCHAR(100) NOT NULL,
+
+    predicted_frequency DOUBLE PRECISION NOT NULL,
+    predicted_severity DOUBLE PRECISION NOT NULL,
+    predicted_pure_premium DOUBLE PRECISION NOT NULL,
+
+    exposure_used DOUBLE PRECISION NOT NULL,
+    expected_claim_count DOUBLE PRECISION NOT NULL,
+    expected_claim_amount DOUBLE PRECISION NOT NULL,
+
+    scored_at TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT pk_model_predictions
+        PRIMARY KEY (prediction_run_id, idpol),
+
+    CONSTRAINT chk_predicted_frequency_positive
+        CHECK (predicted_frequency > 0),
+
+    CONSTRAINT chk_predicted_severity_positive
+        CHECK (predicted_severity > 0),
+
+    CONSTRAINT chk_predicted_pure_premium_positive
+        CHECK (predicted_pure_premium > 0),
+
+    CONSTRAINT chk_exposure_used_positive
+        CHECK (exposure_used > 0),
+
+    CONSTRAINT chk_expected_claim_count_nonnegative
+        CHECK (expected_claim_count >= 0),
+
+    CONSTRAINT chk_expected_claim_amount_nonnegative
+        CHECK (expected_claim_amount >= 0)
+);
+
+
+CREATE INDEX IF NOT EXISTS idx_model_predictions_idpol
+    ON model_predictions (idpol);
+
+CREATE INDEX IF NOT EXISTS idx_model_predictions_scored_at
+    ON model_predictions (scored_at);
