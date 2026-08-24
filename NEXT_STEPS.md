@@ -1,43 +1,51 @@
 # NEXT STEPS
 
-**Stand:** 20.08.2026
+**Stand:** 24.08.2026
 
 ## 1. Aktueller Projektstatus
 
-Die technischen Arbeitspakete Woche 1 bis Woche 4 wurden erfolgreich
+Die technischen Arbeitspakete Woche 1 bis Woche 5 wurden erfolgreich
 abgeschlossen beziehungsweise vorgezogen umgesetzt.
 
-Die beiden freMTPL2-Datensätze wurden reproduzierbar beschafft, im Raw Layer
-unverändert gespeichert und durch Metadaten, Dateigrößen und
-SHA256-Prüfsummen dokumentiert.
-
-Eine wiederholbare Ingestion-Pipeline sowie neun automatisierte
-Data-Quality-Prüfungen wurden entwickelt. Die wesentlichen
-Datenqualitätsbefunde wurden dokumentiert und anschließend durch
-nachvollziehbare Regeln in der Curated-Schicht behandelt.
+Die Datenbeschaffung, Ingestion, Data-Quality-Prüfungen, Curated-Schicht,
+PostgreSQL-Analytics-Layer und die geschäftsorientierte explorative
+Datenanalyse sind vollständig umgesetzt.
 
 Der policenbasierte Curated-Datensatz umfasst 678.013 Policen und 25 Spalten.
 
-Die Daten wurden in ein analytisches PostgreSQL-Datenmodell überführt.
-Zusätzlich stehen Views für policenbasierte Analysen, Claim-Level-Analysen,
-Data-Quality-Monitoring und den aktuellen Frequency-Prediction-Checkpoint zur
-Verfügung.
+Nach dem erfolgreichen End-to-End-Kontrollpunkt wurde die Hauptmodellierung
+auf Basis eines einmalig definierten und reproduzierbaren Policy-Level-
+Train/Test-Splits durchgeführt.
 
-Die geschäftsorientierte explorative Datenanalyse in
-`notebooks/03_eda.ipynb` wurde vollständig abgeschlossen und mit einem
-frischen Kernel über `Run All` validiert.
+Für die Schadenhäufigkeit wurde ein Poisson-Modell mit Spline-basiertem
+Feature Engineering entwickelt und über Cross-Validation optimiert. Das
+finale Holdout-Modell erreicht eine Mean Poisson Deviance von 0,601319 und
+eine sehr gute Portfolio-Kalibrierung mit 7.211,98 prognostizierten gegenüber
+7.236 tatsächlich beobachteten Schäden.
 
-Darüber hinaus wurde der kritische End-to-End-Kontrollpunkt erfolgreich
-umgesetzt:
+Für die Schadenhöhe wurde ein Gamma-Modell entwickelt. Die Spline-
+Spezifikation zeigte innerhalb der Cross-Validation die beste Leistung,
+konnte die konstante Severity-Baseline auf dem Holdout-Datensatz jedoch nicht
+übertreffen. Diese eingeschränkte Generalisierungsfähigkeit wurde als
+Modelllimitierung dokumentiert.
 
-`PostgreSQL → Python → einfaches Poisson-Modell → Vorhersagen in PostgreSQL → Power BI`
+Frequency und Severity wurden anschließend zur prognostizierten Pure Premium
+zusammengeführt. Die Risk-Decile-Analyse zeigt eine erkennbare
+Risikodifferenzierung, gleichzeitig jedoch eine Überprognose in den höchsten
+Risikogruppen. Die Interpretation der Schadenbetragskalibrierung berücksichtigt
+explizit die fehlenden Severity-Informationen bei einem Teil der Schadenpolicen.
 
-Das hierfür verwendete Poisson-Modell ist ausdrücklich nur ein technischer
-Checkpoint und noch nicht das finale Frequency-Modell.
+Nach Abschluss der Holdout-Bewertung wurden die festgelegten Frequency- und
+Severity-Spezifikationen auf den vollständig verfügbaren Daten neu geschätzt.
+Damit wurden für alle 678.013 Policen finale Policy-Level-Prognosen erzeugt.
 
-Die Hauptmodellierungsphase mit Train-/Test-Split, finalem Poisson-Modell,
-Gamma-Severity-Modell, Pure Premium, Deviance-Metriken und
-Risk-Decile-Kalibrierung wurde noch nicht begonnen.
+Die finalen Prognosen wurden reproduzierbar gespeichert und anschließend in
+die PostgreSQL-Tabelle `model_predictions` geladen. Die View
+`vw_model_prediction_analysis` stellt den aktuellsten Scoring-Lauf für
+nachgelagerte Analysen und Power BI bereit.
+
+Der aktuelle technische Stand ist auf GitHub versioniert und der Working Tree
+ist clean.
 
 ## 2. Bereits abgeschlossen
 
@@ -173,10 +181,53 @@ Risk-Decile-Kalibrierung wurde noch nicht begonnen.
 - [X] Actual vs. Predicted Frequency nach Area visualisiert
 - [X] Kritischen End-to-End-Kontrollpunkt erfolgreich abgeschlossen
 
+### Hauptmodelle und Pure Premium
+
+- [X] Gemeinsamen Policy-Level-Train/Test-Split erstellt
+- [X] Split-Artefakt reproduzierbar gespeichert und validiert
+- [X] Train-/Test-Leakage ausgeschlossen
+- [X] `notebooks/04_frequency_model.ipynb` erstellt
+- [X] Exposure-korrekte Poisson-Frequency-Modellierung umgesetzt
+- [X] 5-Fold-Cross-Validation durchgeführt
+- [X] Grouped-, Raw- und Spline-Spezifikationen verglichen
+- [X] Spline-Hyperparameter innerhalb der Trainingsdaten optimiert
+- [X] Finales Frequency-Modell mit 6 Knoten, Grad 3 und `alpha=0` festgelegt
+- [X] Holdout Mean Poisson Deviance von 0,601319 erreicht
+- [X] Poisson-D² von 0,0390 dokumentiert
+- [X] Frequency-Kalibrierung nach Risikodezilen durchgeführt
+- [X] Holdout-Portfoliofrequenz exposure-korrekt validiert
+- [X] Frequency-Holdout-Modell als reproduzierbares Artefakt gespeichert
+- [X] `notebooks/05_severity_model.ipynb` erstellt
+- [X] Konsistente Severity-Eligibility-Regeln umgesetzt
+- [X] ClaimNb-gewichtete Gamma-Modellierung umgesetzt
+- [X] Grouped-, Raw- und Spline-Severity-Spezifikationen verglichen
+- [X] Severity-Spline-Hyperparameter per Cross-Validation optimiert
+- [X] Finales Severity-Modell mit 6 Knoten, Grad 3 und `alpha=0` festgelegt
+- [X] Holdout Mean Gamma Deviance von 1,615760 dokumentiert
+- [X] Eingeschränkte Severity-Generalisation gegenüber der Baseline dokumentiert
+- [X] Severity-Kalibrierung und Heavy-Tail-Effekte analysiert
+- [X] Severity-Holdout-Modell als reproduzierbares Artefakt gespeichert
+- [X] `notebooks/05_severity_model.ipynb` mit Restart Kernel + Run All validiert
+- [X] `notebooks/06_model_comparison.ipynb` erstellt
+- [X] Predicted Pure Premium als Frequency × Severity berechnet
+- [X] Expected Claim Count exposure-korrekt berechnet
+- [X] Expected Claim Amount exposure-korrekt berechnet
+- [X] Pure-Premium-Risikodezile analysiert
+- [X] Datenlimitation durch fehlende Severity-Informationen dokumentiert
+- [X] Frequency- und Severity-Modelle auf Full Data neu geschätzt
+- [X] Full-Data-Modellartefakte gespeichert und reproduzierbar validiert
+- [X] Finales Scoring für alle 678.013 Policen durchgeführt
+- [X] `data/output/model_predictions.pq` erzeugt
+- [X] PostgreSQL-Tabelle `model_predictions` erstellt
+- [X] 678.013 finale Prediction-Zeilen mit PostgreSQL `COPY` gespeichert
+- [X] Prediction-Run- und Modellversionierung implementiert
+- [X] `vw_model_prediction_analysis` erstellt
+- [X] Python- und PostgreSQL-Aggregate vollständig abgeglichen
+
 ## 3. Aktueller technischer Kontrollpunkt
 
-Der aktuelle Checkpoint bestätigt, dass die gesamte technische Architektur
-grundsätzlich funktioniert:
+Der aktuelle technische Stand bestätigt die vollständige Modellierungs- und
+Prediction-Pipeline:
 
 ```text
 OpenML / Raw Data
@@ -187,15 +238,39 @@ Data Quality
         ↓
 Curated Layer
         ↓
-PostgreSQL
+PostgreSQL Analytics Layer
         ↓
-Python Modeling
+Gemeinsamer Train/Test-Split
         ↓
-Poisson Checkpoint
+Poisson Frequency + Gamma Severity
         ↓
-Policy-Level Predictions
+Holdout Evaluation
         ↓
-PostgreSQL
+Predicted Pure Premium
         ↓
-Power BI
+Full-Data-Refit
+        ↓
+Policy-Level Scoring
+        ↓
+PostgreSQL model_predictions
+        ↓
+vw_model_prediction_analysis
+        ↓
+Power BI / weitere Modellvergleiche
 ```
+
+## 4. Nächste technische Schritte
+
+Der nächste technische Arbeitsblock beginnt mit dem Challenger-Modell und
+wird erst nach dem Abschluss der Dokumentations- und Reporting-Aufgaben der
+aktuellen Modellierungsphase gestartet.
+
+Geplante nächste Schritte:
+
+1. TweedieRegressor als Challenger-Modell entwickeln
+2. Mean Tweedie Deviance berechnen
+3. Lorenz-/Gini-Analyse ergänzen
+4. Poisson × Gamma und Tweedie fair vergleichen
+5. Vier finale Risikosegmente definieren
+6. Handlungsempfehlungen je Risikosegment ableiten
+7. FastAPI-Endpunkte für Policy- und Batch-Scoring vorbereiten
