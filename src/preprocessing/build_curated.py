@@ -4,16 +4,18 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.features.build_features import build_policy_features
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
-
 PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 
 FREQUENCY_FILE = RAW_DATA_DIR / "freMTPL2freq.pq"
 SEVERITY_FILE = RAW_DATA_DIR / "freMTPL2sev.pq"
 
 CURATED_POLICY_FILE = PROCESSED_DATA_DIR / "policy_curated.pq"
+
 
 def aggregate_severity(
     severity_df: pd.DataFrame,
@@ -40,6 +42,7 @@ def aggregate_severity(
 
     return aggregated_df
 
+
 def split_orphan_severity(
     aggregated_severity_df: pd.DataFrame,
     frequency_df: pd.DataFrame,
@@ -60,6 +63,7 @@ def split_orphan_severity(
 
     return matched_df, orphan_df
 
+
 def clean_exposure(
     frequency_df: pd.DataFrame,
 ) -> pd.DataFrame:
@@ -78,6 +82,7 @@ def clean_exposure(
 
     return cleaned_df
 
+
 def add_high_claim_count_flag(
     frequency_df: pd.DataFrame,
     threshold: int = 4,
@@ -91,6 +96,7 @@ def add_high_claim_count_flag(
     )
 
     return flagged_df
+
 
 def merge_frequency_with_severity(
     frequency_df: pd.DataFrame,
@@ -106,6 +112,7 @@ def merge_frequency_with_severity(
     )
 
     return merged_df
+
 
 def fill_claim_free_severity(
     merged_df: pd.DataFrame,
@@ -130,6 +137,7 @@ def fill_claim_free_severity(
     ] = 0
 
     return filled_df
+
 
 def add_missing_severity_flag(
     merged_df: pd.DataFrame,
@@ -184,6 +192,7 @@ def add_claim_count_mismatch_flag(
 
     return curated_df
 
+
 def save_curated_policy(
     curated_df: pd.DataFrame,
 ) -> None:
@@ -198,3 +207,53 @@ def save_curated_policy(
         CURATED_POLICY_FILE,
         index=False,
     )
+
+
+def run_curated_pipeline() -> pd.DataFrame:
+    """Run the complete raw-to-curated policy pipeline."""
+
+    frequency_df = pd.read_parquet(FREQUENCY_FILE)
+    severity_df = pd.read_parquet(SEVERITY_FILE)
+
+    aggregated_severity_df = aggregate_severity(
+        severity_df
+    )
+
+    matched_severity_df, orphan_severity_df = (
+        split_orphan_severity(
+            aggregated_severity_df,
+            frequency_df,
+        )
+    )
+
+    curated_df = build_curated_policy(
+        frequency_df,
+        matched_severity_df,
+    )
+
+    curated_df = build_policy_features(
+        curated_df
+    )
+
+    save_curated_policy(curated_df)
+
+    print(
+        f"Curated dataset saved: "
+        f"{CURATED_POLICY_FILE}"
+    )
+    print(
+        f"Policies: {len(curated_df):,}"
+    )
+    print(
+        f"Columns: {curated_df.shape[1]}"
+    )
+    print(
+        f"Orphan severity policies excluded: "
+        f"{len(orphan_severity_df):,}"
+    )
+
+    return curated_df
+
+
+if __name__ == "__main__":
+    run_curated_pipeline()
