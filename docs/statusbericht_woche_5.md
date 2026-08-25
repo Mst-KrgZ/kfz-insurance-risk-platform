@@ -1,414 +1,767 @@
-
 # Statusbericht – Woche 5
 
 **Projekt:** Kfz Insurance Risk & Pure Premium Intelligence Platform
-**Berichtszeitraum:** Technisches Arbeitspaket Woche 5, vorgezogen bearbeitet vom 20.08.2026 bis 24.08.2026
-**Stand:** 24.08.2026
+**Berichtszeitraum:** Technisches Arbeitspaket Woche 5, vorgezogen bearbeitet vom 20.08.2026 bis 25.08.2026
+**Stand:** 25.08.2026
 **Gesamtarbeitszeit:** Wird nach Abschluss der Zeiterfassung ergänzt
 
 ## 1. Aktueller Projektstand
 
-In der fünften Projektphase wurde die Hauptmodellierung für Schadenhäufigkeit,
-Schadenhöhe und Pure Premium vollständig umgesetzt.
+Im fünften technischen Arbeitspaket wurde die Hauptmodellierungsphase des
+Projekts abgeschlossen.
 
-Zunächst wurde ein einmaliger und reproduzierbarer Policy-Level-Train/Test-
-Split erstellt. Dieser Split wurde anschließend für Frequency und Severity
-gemeinsam verwendet, sodass keine voneinander abweichenden Datenaufteilungen
-zwischen den Modellkomponenten entstanden.
+Auf Basis eines einmalig erzeugten, gemeinsamen Train-/Test-Splits auf
+Policenebene wurden ein Exposure-gewichtetes Poisson-Modell für die
+Schadenfrequenz und ein ClaimNb-gewichtetes Gamma-Modell für die
+Schadenhöhe entwickelt und validiert.
 
-Für die Schadenhäufigkeit wurde ein Exposure-gewichtetes Poisson-Modell
-entwickelt. Verschiedene Feature-Spezifikationen und Regularisierungsstärken
-wurden ausschließlich innerhalb der Trainingsdaten über eine 5-Fold-
-Cross-Validation verglichen.
+Die beiden Modellkomponenten wurden anschließend zu einer annualisierten
+Pure Premium kombiniert:
 
-Die beste Frequency-Spezifikation verwendet Spline-Transformationen für
-kontinuierliche Risikomerkmale mit sechs Knoten, Grad 3 und ohne zusätzliche
-Regularisierung.
+`Predicted Pure Premium = Predicted Frequency × Predicted Severity`
 
-Auf dem unabhängigen Holdout-Datensatz erreicht das finale Frequency-Modell
-eine Mean Poisson Deviance von 0,601319. Gegenüber der konstanten Baseline
-entspricht dies einer Verbesserung von rund 3,90 %.
+Dabei wird die Pure Premium ausschließlich als statistisch erwarteter,
+annualisierter Schadenaufwand interpretiert. Sie stellt weder einen
+Endkundenpreis noch einen Versicherungstarif dar.
 
-Für die Schadenhöhe wurde ein Gamma-Regressionsmodell entwickelt. Hierfür
-wurden ausschließlich Policen mit vollständig und konsistent beobachteter
-Severity verwendet.
+Nach der ersten Modellversion wurde zusätzlich ein unabhängiger technischer
+Review durchgeführt. Die daraus abgeleiteten sinnvollen Prüfungen wurden
+systematisch umgesetzt. Dazu gehörten insbesondere eine erneute
+Reproduzierbarkeitsprüfung des Curated Layers, robustere
+Cross-Validation-Verfahren, alternative Spline-Spezifikationen,
+Regularisierung, Large-Loss-Sensitivitätsanalysen sowie Lorenz- und
+Gini-Auswertungen.
 
-Auch für Severity wurden verschiedene Feature-Spezifikationen und
-Hyperparameter per Cross-Validation verglichen. Die beste Spezifikation
-verwendet ebenfalls sechs Spline-Knoten, Grad 3 und `alpha=0`.
+Auf dieser Grundlage wurden eine finale Frequency-v2- und eine
+Severity-v2-Spezifikation festgelegt.
 
-Die Severity-Modellierung zeigt jedoch eine deutlich geringere
-Generalisierungsstabilität als die Frequency-Modellierung. Obwohl die
-Spline-Spezifikation innerhalb der Cross-Validation die konstante Baseline
-übertrifft, liegt ihre Holdout Mean Gamma Deviance mit 1,615760 über der
-Holdout-Baseline von 1,543630.
+Die finalen Modelle wurden anschließend auf dem vollständigen verfügbaren
+Datenbestand neu trainiert, als versionierte Modellartefakte gespeichert,
+erneut geladen und auf exakte Reproduzierbarkeit geprüft.
 
-Diese eingeschränkte Generalisierungsfähigkeit wurde nicht durch nachträgliche
-Anpassung an den Testdatensatz korrigiert, sondern ausdrücklich als
-Modelllimitierung dokumentiert.
+Die finalen Policy-Level-Prognosen für 678.013 Policen wurden als Parquet
+gespeichert und erfolgreich in die PostgreSQL-Tabelle
+`model_predictions` übertragen.
 
-Anschließend wurden Frequency und Severity zur prognostizierten Pure Premium
-zusammengeführt.
+Damit ist die geplante Hauptmodellierung einschließlich
+Frequency, Severity, Pure Premium, Modellvalidierung,
+Model-Versioning und PostgreSQL-Integration abgeschlossen.
 
-Nach Abschluss der unabhängigen Modellbewertung wurden die festgelegten
-Frequency- und Severity-Spezifikationen auf den vollständig verfügbaren
-Daten neu geschätzt und für alle 678.013 Policen finale Policy-Level-
-Prognosen erzeugt.
+## 2. Gemeinsamer Train-/Test-Split
 
-Die finalen Predictions wurden sowohl als reproduzierbarer Parquet-Output als
-auch in PostgreSQL gespeichert. Zusätzlich wurde eine finale analytische View
-für nachgelagerte Auswertungen und Power BI erstellt.
+Für Frequency und Severity wurde genau ein gemeinsamer Split auf
+Policenebene verwendet.
 
-## 2. Abgeschlossene Arbeiten
+Der Split wurde nicht separat für die beiden Modellkomponenten erzeugt.
 
-### Gemeinsamer Train-/Test-Split
+Ergebnis:
 
-- Einheitlichen Policy-Level-Train/Test-Split erstellt
-- 80/20-Aufteilung mit `random_state=42` verwendet
-- Schadenstatus zur stabilen Aufteilung stratifiziert
-- 542.410 Trainingspolicen erstellt
-- 135.603 Holdout-Testpolicen erstellt
-- Überschneidung zwischen Train und Test ausgeschlossen
-- Claim-Policy-Rate zwischen Train und Test abgeglichen
-- Exposure-Verteilungen zwischen Train und Test geprüft
-- Split dauerhaft als `policy_train_test_split.pq` gespeichert
-- Gespeicherten Split erneut geladen und reproduzierbar validiert
-- Zweiten unabhängigen Split für Severity bewusst vermieden
+- Gesamtes Portfolio: 678.013 Policen
+- Training: 542.410 Policen
+- Test: 135.603 Policen
+- Überschneidung der `IDpol` zwischen Train und Test: 0
+- Train Exposure: 286.776,50
+- Test Exposure: 71.583,60
+- Train Claims: 28.866
+- Test Claims: 7.236
+- Train Portfolio Frequency: 0,100657
+- Test Portfolio Frequency: 0,101085
+- Severity-geeignete Policen im Training: 19.944
+- Severity-geeignete Policen im Test: 4.999
+- Severity-geeignete Policen insgesamt: 24.943
 
-### Frequency-Modell
+Damit ist sichergestellt, dass dieselbe Police nicht gleichzeitig für das
+Training und die Holdout-Bewertung verwendet wird.
 
-- `notebooks/04_frequency_model.ipynb` erstellt
-- Annualisierte Frequency als `ClaimNb / Exposure` modelliert
-- `Exposure` als Sample Weight verwendet
-- Leakage- und Feature-Audit durchgeführt
-- Baseline Mean Poisson Deviance von 0,625748 bestimmt
-- Grouped-, Raw-Linear- und Spline-Spezifikationen verglichen
-- 5-Fold-Cross-Validation ausschließlich auf Trainingsdaten durchgeführt
-- Regularisierungsstärken per Cross-Validation verglichen
-- Spline-Hyperparameter systematisch optimiert
-- Sechs Spline-Knoten, Grad 3 und `alpha=0` ausgewählt
-- Finales Poisson-Modell auf vollständigem Trainingsdatensatz geschätzt
-- Holdout Mean Poisson Deviance von 0,601319 erreicht
-- Verbesserung gegenüber der Baseline von rund 3,90 % erreicht
-- Poisson-D² von 0,0390 dokumentiert
-- 7.236 tatsächlich beobachtete Holdout-Schäden bestätigt
-- 7.211,98 erwartete Holdout-Schäden prognostiziert
-- Abweichung der erwarteten Schadenanzahl von nur ca. -0,33 % bestätigt
-- Risk-Decile-Kalibrierung durchgeführt
-- Monotone Risikodifferenzierung der Frequency-Prognosen bestätigt
-- Frequency-Modellartefakt gespeichert
-- Modellartefakt erneut geladen und Predictions exakt reproduziert
+## 3. Frequency-Modell
 
-### Severity-Modell
+Das Frequency-Modell prognostiziert die annualisierte Schadenfrequenz.
 
-- `notebooks/05_severity_model.ipynb` erstellt
-- Gemeinsamen Policy-Level-Split aus der Frequency-Modellierung übernommen
-- Severity-Eligibility-Regeln explizit umgesetzt
-- Policen mit fehlender Severity ausgeschlossen
-- Inkonsistente Frequency-Severity-Fälle ausgeschlossen
-- 24.943 vollständig konsistente Severity-Policen bestätigt
-- 19.944 Severity-Trainingspolicen verwendet
-- 4.999 Severity-Holdout-Policen verwendet
-- Severity als `total_claim_amount / ClaimNb` definiert
-- `ClaimNb` als Sample Weight verwendet
-- Stark rechtsschiefe Heavy-Tail-Verteilung dokumentiert
-- Grouped-, Raw-Linear- und Spline-Spezifikationen verglichen
-- Convergence-Probleme der Raw-Linear-Spezifikation erkannt
-- Numerische Raw-Features standardisiert und Convergence stabilisiert
-- 5-Fold-Cross-Validation durchgeführt
-- Spline-Hyperparameter systematisch optimiert
-- Sechs Spline-Knoten, Grad 3 und `alpha=0` ausgewählt
-- CV Mean Gamma Deviance von 1,637578 erreicht
-- CV-Baseline von 1,770462 bestimmt
-- Spline-Modell innerhalb der CV gegenüber der Baseline verbessert
-- Finales Gamma-Modell auf vollständigem Severity-Trainingsdatensatz geschätzt
-- Holdout Mean Gamma Deviance von 1,615760 dokumentiert
-- Holdout-Baseline von 1,543630 dokumentiert
-- Gamma-D² von -0,0540 dokumentiert
-- Eingeschränkte Holdout-Generalisation ausdrücklich als Modelllimitierung dokumentiert
-- Keine nachträgliche Hyperparameter-Anpassung auf Basis des Testdatensatzes durchgeführt
-- Severity-Kalibrierung nach prognostizierten Risikogruppen untersucht
-- Überprognose im höchsten Severity-Dezil dokumentiert
-- Severity-Modellartefakt gespeichert
-- Gespeichertes Modell erneut geladen und Predictions exakt reproduziert
-- Notebook mit Restart Kernel + Run All erfolgreich validiert
+Die fachlich festgelegte Modellformel lautet:
 
-### Pure Premium und Modellzusammenführung
+`y = ClaimNb / Exposure`
 
-- `notebooks/06_model_comparison.ipynb` erstellt
-- Frequency- und Severity-Modellartefakte gemeinsam geladen
-- Einheitlichen Holdout-Datensatz verwendet
-- `predicted_pure_premium = predicted_frequency × predicted_severity` berechnet
-- `expected_claim_count = predicted_frequency × Exposure` berechnet
-- `expected_claim_amount = predicted_pure_premium × Exposure` berechnet
-- Predictions für alle 135.603 Holdout-Policen technisch validiert
-- Fehlende und nicht-positive Modellprognosen ausgeschlossen
-- Pure-Premium-Verteilung untersucht
-- Pure-Premium-Risikodezile erstellt
-- Beobachtete und prognostizierte Pure Premium nach Risikodezil verglichen
-- Erkennbare Risikodifferenzierung im höchsten Risikodezil bestätigt
-- Überprognose in den höchsten Pure-Premium-Risikogruppen dokumentiert
+mit
 
-### Umgang mit fehlenden Severity-Informationen
+`sample_weight = Exposure`
 
-- 1.813 Holdout-Schadenpolicen mit fehlendem Schadenbetrag identifiziert
-- 1.924 Claims mit fehlender Severity-Information im Holdout bestätigt
-- Fehlende Schadenbeträge nicht als null interpretiert
-- Full-Portfolio-Frequency weiterhin auf allen Holdout-Policen bewertet
-- Schadenbetrags- und Pure-Premium-Vergleiche auf beobachtbare Fälle begrenzt
-- Selektionsverzerrung der Observable-Amount-Teilmenge dokumentiert
-- Abweichungen dieser Teilmenge bewusst nicht als unverzerrte Portfolio-
-  Fehlkalibrierung interpretiert
-- Zunehmenden Anteil fehlender Severity-Werte in hohen Risikodezilen dokumentiert
+Als Modell wird ein `PoissonRegressor` innerhalb einer
+Preprocessing-Pipeline verwendet.
 
-### Full-Data-Refit und Portfolio-Scoring
+### 3.1 Erste Modellversion
 
-- Final festgelegtes Frequency-Modell auf allen 678.013 Policen neu geschätzt
-- Full-Data-Frequency-Modell erfolgreich konvergiert
-- Final festgelegtes Severity-Modell auf allen 24.943 geeigneten Severity-
-  Policen neu geschätzt
-- Full-Data-Severity-Modell erfolgreich konvergiert
-- Evaluation-Modelle und Full-Data-Inferenzmodelle bewusst getrennt gehalten
-- Full-Data-Frequency-Artefakt gespeichert
-- Full-Data-Severity-Artefakt gespeichert
-- Beide Full-Data-Artefakte erneut geladen und exakt reproduziert
-- Finale Predictions für alle 678.013 Policen erzeugt
-- 36.093,70 erwartete Schäden für das gesamte Portfolio berechnet
-- 36.102 tatsächlich beobachtete Schäden als Portfolio-Sanity-Check bestätigt
-- 78.428.858,76 erwarteten Schadenbetrag prognostiziert
-- Erwarteten Schadenbetrag aufgrund fehlender Severity-Werte nicht als
-  unabhängige Modellgütebewertung interpretiert
+Die erste Spline-Version verwendete uniforme Spline-Knoten.
 
-### PostgreSQL Prediction Layer
+Holdout-Ergebnisse:
 
-- Finalen Prediction-Datensatz mit 678.013 Policen erstellt
-- Eindeutige `prediction_run_id` implementiert
-- Frequency- und Severity-Modellversionen gespeichert
-- `predicted_frequency` gespeichert
-- `predicted_severity` gespeichert
-- `predicted_pure_premium` gespeichert
-- `exposure_used` gespeichert
-- `expected_claim_count` gespeichert
-- `expected_claim_amount` gespeichert
-- `scored_at` gespeichert
-- Prediction-Datensatz als `data/output/model_predictions.pq` gespeichert
-- PostgreSQL-Tabelle `model_predictions` erstellt
-- Zusammengesetzten Primärschlüssel `(prediction_run_id, idpol)` eingerichtet
-- Constraints für gültige Prognosewerte implementiert
-- 678.013 Prediction-Zeilen über PostgreSQL `COPY` geladen
-- `src/database/load_postgres.py` um Prediction-Loader erweitert
-- Reload desselben Prediction-Runs ohne Duplikate ermöglicht
-- Historisierung zukünftiger Prediction-Runs vorbereitet
-- `vw_model_prediction_analysis` erstellt
-- View automatisch auf den aktuellsten Scoring-Lauf ausgerichtet
-- Claim-Count-Residuals bereitgestellt
-- Claim-Amount-Residuals für beobachtbare Schadenbeträge bereitgestellt
-- 678.013 eindeutige View-Zeilen auf PostgreSQL-Ebene bestätigt
-- SQL-seitige Expected Claims von 36.093,70 validiert
-- SQL-seitigen Expected Claim Amount von 78.428.858,76 validiert
-- Python- und PostgreSQL-Ergebnisse vollständig abgeglichen
+- Baseline Mean Poisson Deviance: 0,625748
+- Frequency v1 Mean Poisson Deviance: 0,601319
+- Poisson D²: 0,0390
+- Tatsächliche Claims: 7.236
+- Prognostizierte Claims: 7.211,98
+- Portfolioabweichung: −0,33 %
+- Gini: 0,2683
 
-## 3. Technische Probleme und Lösungen
+Die Risk-Decile-Kalibrierung zeigte bereits eine stabile und weitgehend
+monotone Trennung der Frequency-Risikogruppen.
 
-### Einheitlicher Split für Frequency und Severity
+### 3.2 Post-Audit-Validierung
 
-Frequency und Severity benötigen unterschiedliche Zielvariablen und
-unterschiedliche gültige Datenmengen. Separate Train-/Test-Splits hätten
-jedoch dazu geführt, dass die beiden Modellkomponenten auf unterschiedlichen
-Policy-Gruppen bewertet werden.
+Im Rahmen der zusätzlichen Modellprüfung wurden uniforme und
+quantilbasierte Spline-Knoten mit wiederholter Cross-Validation verglichen.
 
-**Lösung:**
+Die quantilbasierte Variante war über alle fünf untersuchten
+Random-Seeds stabil besser als die uniforme Variante.
 
-Ein gemeinsamer Policy-Level-Split wurde einmalig auf dem vollständigen
-Portfolio erstellt und dauerhaft gespeichert.
+Anschließend wurden Knotenzahl, Polynomgrad und Regularisierung
+ausschließlich auf den Trainingsdaten verglichen.
 
-Severity verwendet ausschließlich die für das Modell geeigneten Policen aus
-diesem bereits definierten Split.
+Als finale Frequency-v2-Spezifikation wurde festgelegt:
 
-Dadurch bleibt die spätere Pure-Premium-Bewertung methodisch konsistent.
+- `SplineTransformer`
+- `knots = "quantile"`
+- `n_knots = 8`
+- `degree = 2`
+- `alpha = 0.0`
+- `log_density` weiterhin linear
+- kategoriale Merkmale über One-Hot-Encoding
 
-### Heavy-Tail-Struktur der Schadenhöhe
+Eine zusätzliche Spline-Transformation von `log_density` brachte keinen
+relevanten Vorteil und wurde deshalb nicht übernommen.
 
-Die Severity-Zielvariable weist einen ausgeprägten rechten Tail mit wenigen
-sehr hohen Großschäden auf.
+### 3.3 Finale Frequency-v2-Ergebnisse
 
-Dadurch schwanken die durchschnittlichen Schadenhöhen zwischen einzelnen
-Cross-Validation-Folds deutlich stärker als bei der Frequency-Modellierung.
+Holdout-Ergebnisse:
 
-**Lösung:**
+- Baseline Mean Poisson Deviance: 0,625748
+- Frequency v1 Mean Poisson Deviance: 0,601319
+- Frequency v2 Mean Poisson Deviance: 0,592685
+- Verbesserung gegenüber Baseline: 5,28 %
+- Verbesserung gegenüber v1: 1,44 %
+- Poisson D²: 0,0528
+- Tatsächliche Claims: 7.236
+- Prognostizierte Claims: 7.217,91
+- Portfolioabweichung: −0,25 %
+- Tatsächliche Portfoliofrequenz: 0,101085
+- Prognostizierte Portfoliofrequenz: 0,100832
+- Frequency-v2-Gini: 0,2903
 
-Die Großschäden wurden nicht allein zur Verbesserung der Modellmetriken
-entfernt.
+Der Gini verbesserte sich gegenüber v1 von 0,2683 auf 0,2903.
 
-Stattdessen wurde eine Gamma-Regressionsstruktur mit `ClaimNb` als Sample
-Weight verwendet und die Variabilität der Cross-Validation ausdrücklich
+Frequency v2 wird deshalb als finales Frequency-Modell verwendet.
+
+## 4. Severity-Modell
+
+Das Severity-Modell prognostiziert die durchschnittliche Schadenhöhe je
+Schaden.
+
+Die fachlich festgelegte Modellformel lautet:
+
+`y = total_claim_amount / ClaimNb`
+
+mit
+
+`sample_weight = ClaimNb`
+
+Für das Modell werden ausschließlich Policen verwendet, für die eine
+fachlich konsistente und positive Schadenhöhe verfügbar ist.
+
+Die Severity-Basis ist mit 24.943 geeigneten Policen deutlich kleiner als
+die Frequency-Basis. Die Ergebnisse müssen deshalb vorsichtiger
+interpretiert werden.
+
+### 4.1 Erste Modellversion
+
+Die erste Severity-Spline-Version zeigte in der ursprünglichen
+Cross-Validation einen Vorteil gegenüber der konstanten Baseline.
+
+Auf dem Holdout zeigte sich dieses Ergebnis jedoch nicht.
+
+Holdout-Ergebnisse der ersten Version:
+
+- Konstante Baseline Mean Gamma Deviance: 1,543630
+- Severity v1 Mean Gamma Deviance: 1,615760
+- Gamma D²: −0,0540
+- Tatsächliche Claim-gewichtete Severity: 2.081,27
+- Prognostizierte Claim-gewichtete Severity: 2.231,01
+- Abweichung der beobachtbaren Schadenhöhe: +7,19 %
+- Severity-v1-Gini: 0,0333
+
+Damit war die erste Severity-Version auf dem Holdout schwächer als die
+konstante Baseline.
+
+## 5. Erweiterte Severity-Validierung
+
+Wegen der starken Rechtsschiefe und einzelner sehr großer Schäden wurde
+die Severity-Modellwahl nach dem technischen Review erneut untersucht.
+
+### 5.1 Wiederholte Cross-Validation
+
+Die ursprüngliche Cross-Validation wurde durch eine wiederholte
+stratifizierte 5-Fold-Cross-Validation mit fünf unterschiedlichen
+Random-Seeds ergänzt.
+
+Die Bewertung erfolgte über gepoolte Out-of-Fold-Prognosen.
+
+Ergebnisse:
+
+- Baseline pooled Mean Gamma Deviance: 1,770221
+- ursprüngliche Spline-Spezifikation: 1,644741
+- Spline besser als Baseline: 5 von 5 Seeds
+
+Damit konnte ausgeschlossen werden, dass der ursprüngliche
+Cross-Validation-Vorteil ausschließlich durch einen einzelnen günstigen
+Fold verursacht wurde.
+
+### 5.2 Skalierung und Regularisierung
+
+Für numerische Spline-Merkmale wurde anschließend eine selektive
+Standardisierung getestet.
+
+Kategoriale One-Hot-Merkmale wurden nicht skaliert.
+
+Die Regularisierung wurde ausschließlich auf Trainingsdaten verglichen.
+
+Die niedrigste mittlere Cross-Validation-Deviance wurde mit
+`alpha = 0.1` erreicht.
+
+Nach Anwendung der 1-SE-Regel wurde jedoch `alpha = 1.0` als stärker
+regularisierte und robustere Spezifikation ausgewählt.
+
+Diese Entscheidung wurde getroffen, bevor die finale v2-Spezifikation auf
+dem Holdout bewertet wurde.
+
+### 5.3 Large-Loss-Sensitivitätsanalyse
+
+Zusätzlich wurde untersucht, ob eine Begrenzung sehr großer Schäden im
+Training mit anschließendem Large-Loss-Loading die Modellstabilität
+verbessert.
+
+Getestet wurden unter anderem:
+
+- 95. Perzentil
+- 99. Perzentil
+- 99,5. Perzentil
+- 50.000 EUR
+- 100.000 EUR
+
+Die Bewertung erfolgte weiterhin auf dem nicht begrenzten Originalziel.
+
+Keine der getesteten Varianten war gegenüber der ungekürzten
+Severity-v2-Spezifikation überlegen.
+
+Die Large-Loss-Variante wurde deshalb verworfen.
+
+## 6. Finale Severity-v2-Ergebnisse
+
+Die finale Severity-v2-Pipeline verwendet:
+
+- One-Hot-Encoding für kategoriale Merkmale
+- Spline-Transformation für numerische Risikomerkmale
+- selektive Standardisierung der numerischen Modellblöcke
+- `GammaRegressor`
+- `alpha = 1.0`
+
+Holdout-Ergebnisse:
+
+- Konstante Baseline Mean Gamma Deviance: 1,543630
+- Severity v1 Mean Gamma Deviance: 1,615760
+- Severity v2 Mean Gamma Deviance: 1,567498
+- Gamma D²: −0,0155
+- Tatsächliche Claim-gewichtete Severity: 2.081,27
+- Prognostizierte Claim-gewichtete Severity: 2.164,21
+- Abweichung der beobachtbaren Schadenhöhe: +3,99 %
+- Severity-v2-Gini: 0,0033
+
+Severity v2 verbessert damit sowohl die Holdout-Deviance als auch die
+Portfolioabweichung gegenüber Severity v1.
+
+Die konstante Holdout-Baseline bleibt jedoch mit einer Mean Gamma Deviance
+von 1,543630 weiterhin besser.
+
+Dieser Befund wird ausdrücklich als Modellgrenze dokumentiert.
+
+Severity v2 wird im Prototypen deshalb nicht als starker
+Risikodifferenzierer interpretiert. Die Komponente wird primär zur
+profilspezifischen monetären Quantifizierung der erwarteten Schadenhöhe
+verwendet.
+
+Die wichtigste Risikodifferenzierung des Two-Stage-Modells stammt aus der
+Frequency-Komponente.
+
+## 7. Pure Premium und Portfolio-Validierung
+
+Frequency und Severity werden zu einer annualisierten Pure Premium
+kombiniert:
+
+`Predicted Pure Premium = Predicted Frequency × Predicted Severity`
+
+Die Exposure-korrigierten Erwartungswerte werden anschließend berechnet als:
+
+`Expected Claim Count = Predicted Frequency × Exposure`
+
+`Expected Claim Amount = Predicted Pure Premium × Exposure`
+
+Die annualisierte Pure Premium wird nicht direkt über Policen mit
+unterschiedlicher Exposure aufsummiert.
+
+### 7.1 Korrektur der ursprünglichen Pure-Premium-Diagnose
+
+Bei der ersten Auswertung ergab sich auf dem Teilbestand mit vollständig
+beobachtbarer Schadenhöhe eine Abweichung von +37,79 %.
+
+Diese Zahl wird nicht als unbiased Modellkalibrierung interpretiert.
+
+Der Grund ist, dass Policen mit fehlender Schadenhöhe aus diesem Vergleich
+entfernt werden, obwohl ihre Claims im Frequency-Modell weiterhin
+vorhanden sind.
+
+Damit beschreibt die Kennzahl sowohl einen Missing-Severity-
+Selektionseffekt als auch Modellabweichungen.
+
+Die primären Kalibrierungsaussagen werden deshalb getrennt auf den jeweils
+korrekten Bewertungsbasen berichtet:
+
+- Frequency v2 auf allen 135.603 Holdout-Policen:
+  Portfolioabweichung −0,25 %
+- Severity v2 auf 4.999 vollständig beobachtbaren Severity-Policen:
+  Schadenbetragsabweichung +3,99 %
+
+Zusätzliche Imputationsszenarien für fehlende Schadenhöhen werden nur als
+Sensitivitätsanalyse betrachtet und nicht als primäre Modellkennzahl
+verwendet.
+
+## 8. Lorenz- und Gini-Analyse
+
+Lorenz- und Gini-Auswertungen wurden als zusätzliche Ranking-Diagnostik
+bereits in dieses Arbeitspaket vorgezogen.
+
+### Frequency
+
+- Frequency v1 Gini: 0,2683
+- Frequency v2 Gini: 0,2903
+- Verbesserung: ca. +0,022
+
+Frequency v2 besitzt damit die stärkste Ranking-Fähigkeit der aktuell
+entwickelten Modellkomponenten.
+
+### Severity
+
+- Severity v1 Gini: 0,0333
+- Severity v2 Gini: 0,0033
+
+Die Severity-Komponente weist auf dem Holdout nur eine sehr geringe
+Ranking-Fähigkeit auf.
+
+### Pure Premium
+
+Auf dem Teilbestand mit beobachtbarer Schadenhöhe wurde zusätzlich geprüft,
+ob die Severity-Komponente die Loss-Rangfolge gegenüber der Frequency
+verbessert.
+
+Ergebnis:
+
+- Frequency-only Loss Gini: 0,2372
+- Pure-Premium-v2 Loss Gini: 0,2358
+- Differenz: −0,0014
+
+Die Severity-Komponente verbessert die Ranking-Leistung damit nicht.
+
+Dieses Ergebnis bestätigt die Entscheidung, Frequency v2 als primären
+Risikodifferenzierer zu verwenden und Severity v2 hauptsächlich zur
+monetären Quantifizierung des erwarteten Schadenaufwands einzusetzen.
+
+Die Pure-Premium-Gini-Auswertung ist aufgrund der fehlenden Schadenhöhen
+als diagnostische Auswertung auf dem beobachtbaren Teilbestand zu
+interpretieren.
+
+## 9. Reproduzierbarkeit des Curated Layers
+
+Im Rahmen des technischen Reviews wurde zusätzlich geprüft, ob der
+Curated Layer vollständig aus dem versionierten Source Code erzeugt werden
+kann.
+
+Die Curated-Pipeline wurde über einen expliziten Einstiegspunkt in
+`src/preprocessing/build_curated.py` ausführbar gemacht.
+
+Die erneute Erzeugung ergab:
+
+- 678.013 Policen
+- 25 Spalten
+- 0 doppelte `IDpol`
+- 1.224 Policen mit gecappter Exposure
+- 9 Policen mit auffällig hoher Claim-Anzahl
+- 9.116 Policen mit fehlender Severity
+- 1 Policy mit Claim-Count-Mismatch
+- 6 orphan Severity-Policen
+
+Der neu erzeugte Datensatz war wertidentisch mit dem bestehenden
+`policy_curated.pq`.
+
+Damit ist die Curated-Schicht aus dem versionierten Projektcode
+reproduzierbar.
+
+## 10. Finale Full-Data-Modelle
+
+Nach Abschluss der Modellauswahl wurden die finalen Spezifikationen auf
+dem vollständigen jeweils geeigneten Datenbestand neu trainiert.
+
+### Frequency Full Refit
+
+- Policen: 678.013
+- Exposure: 358.360,11
+- Claims: 36.102
+- Portfolio Frequency: 0,100742
+- Nicht-positive Exposure: 0
+- Iterationen: 80
+
+Finales Artefakt:
+
+`models/frequency_poisson_quantile_spline_full_v2.joblib`
+
+### Severity Full Refit
+
+- geeignete Policen: 24.943
+- repräsentierte Claims: 26.443
+- fehlende Zielwerte: 0
+- nicht-positive Zielwerte: 0
+- Iterationen: 11
+
+Finales Artefakt:
+
+`models/severity_gamma_spline_scaled_full_v2.joblib`
+
+Zusätzlich werden die zugehörigen Holdout-Artefakte separat versioniert:
+
+- `models/frequency_poisson_quantile_spline_holdout_v2.joblib`
+- `models/severity_gamma_spline_scaled_holdout_v2.joblib`
+
+Die vorherigen v1-Artefakte bleiben zur Nachvollziehbarkeit der
+Modellentwicklung erhalten.
+
+## 11. Validierung der Modellartefakte
+
+Die gespeicherten Full-Data-v2-Modelle wurden erneut geladen und auf dem
+gesamten Portfolio ausgeführt.
+
+Ergebnis:
+
+### Frequency v2
+
+- Artefakt vorhanden: Ja
+- Prognosen exakt identisch: Ja
+- maximale absolute Abweichung: 0,000000000000
+
+### Severity v2
+
+- Artefakt vorhanden: Ja
+- Prognosen exakt identisch: Ja
+- maximale absolute Abweichung: 0,000000000000
+
+Damit reproduzieren die gespeicherten Modellartefakte die zuvor
+berechneten Portfolio-Prognosen exakt.
+
+## 12. Finale `model_predictions`-Schicht
+
+Für das vollständige Portfolio wurde ein neuer versionierter Prediction Run
+erzeugt.
+
+Validierung der Parquet-Ausgabe:
+
+- Zeilen: 678.013
+- Spalten: 11
+- eindeutige `IDpol`: 678.013
+- doppelte `IDpol`: 0
+- fehlende Werte: 0
+- Prediction Runs innerhalb der Datei: 1
+- nicht-positive Frequency-Prognosen: 0
+- nicht-positive Severity-Prognosen: 0
+- nicht-positive Pure-Premium-Prognosen: 0
+
+Prediction Run:
+
+`3e79d43b-d9e2-4edf-9056-be0827aa22f0`
+
+Modellversionen:
+
+- Frequency:
+  `frequency_poisson_quantile_spline_full_v2`
+- Severity:
+  `severity_gamma_spline_scaled_full_v2`
+
+Die Ausgabe wurde unter
+
+`data/output/model_predictions.pq`
+
+gespeichert.
+
+## 13. PostgreSQL-Integration
+
+Die finale Prediction-Datei wurde über die bestehende
+PostgreSQL-Ladepipeline in die Tabelle `model_predictions` übertragen.
+
+Geladene Datenmengen:
+
+- `stg_policy`: 678.013
+- `stg_claim`: 26.639
+- `fact_policy_exposure`: 678.013
+- `fact_claim`: 26.444
+- `pipeline_runs`: 3
+- `dq_check_results`: 27
+- `model_predictions`: 678.013
+
+Die finale Prediction-Run-ID wurde anschließend direkt in PostgreSQL über
+DBeaver geprüft.
+
+Ergebnis:
+
+- Prediction Run ID:
+  `3e79d43b-d9e2-4edf-9056-be0827aa22f0`
+- Zeilen: 678.013
+- eindeutige `IDpol`: 678.013
+- Frequency-Modellversion:
+  `frequency_poisson_quantile_spline_full_v2`
+- Severity-Modellversion:
+  `severity_gamma_spline_scaled_full_v2`
+
+Damit ist der vollständige Pfad
+
+`Modell → Parquet → PostgreSQL`
+
+für die finalen v2-Modelle erfolgreich validiert.
+
+## 14. Technische Probleme und Erkenntnisse
+
+### Heavy-Tail-Effekt im Severity-Modell
+
+Die Schadenhöhen weisen eine stark rechtsschiefe Verteilung mit einzelnen
+sehr großen Schäden auf.
+
+Dadurch reagiert die Gamma-Modellbewertung deutlich empfindlicher auf die
+Zusammensetzung einzelner Validierungsfolds als die Frequency-Modellierung.
+
+**Maßnahme:**
+
+Die ursprüngliche Validierung wurde durch wiederholte,
+stratifizierte Cross-Validation, gepoolte Out-of-Fold-Metriken,
+Regularisierung und eine Large-Loss-Sensitivitätsanalyse ergänzt.
+
+### Severity verbessert die Risikorangfolge kaum
+
+Trotz besserer Calibration gegenüber v1 zeigt Severity v2 nahezu keine
+zusätzliche Ranking-Fähigkeit.
+
+**Konsequenz:**
+
+Diese Schwäche wird nicht verborgen. Frequency v2 bleibt der primäre
+Risikodifferenzierer. Severity v2 wird hauptsächlich für die monetäre
+Quantifizierung eingesetzt.
+
+### Fehlende Schadenhöhen
+
+Für einen relevanten Teil der Schadenpolicen liegt keine vollständige
+Severity-Beobachtung vor.
+
+Dadurch ist ein direkter Vergleich von vorhergesagtem und tatsächlichem
+Gesamtschaden auf einem reduzierten Teilbestand selektionsverzerrt.
+
+**Konsequenz:**
+
+Frequency- und Severity-Kalibrierung werden getrennt auf ihren jeweils
+korrekten Bewertungsbasen berichtet. Analysen auf dem beobachtbaren
+Teilbestand werden ausdrücklich als diagnostisch gekennzeichnet.
+
+### Rechenzeit der erweiterten Cross-Validation
+
+Die zusätzlichen Post-Audit-Experimente mit wiederholter Cross-Validation
+und umfangreicheren Parameterkombinationen waren auf dem lokalen System
+rechenintensiv.
+
+**Konsequenz:**
+
+Nach eindeutigen Ergebnissen wurde die Modelloptimierung bewusst beendet.
+Weitere Tuning-Schleifen werden nicht durchgeführt.
+
+## 15. Methodische Einschränkungen
+
+Die finale Modellbewertung wird bewusst mit ihren Grenzen dokumentiert.
+
+- Das Frequency-Modell zeigt eine gute Portfolio-Kalibrierung und eine
+  messbare Ranking-Fähigkeit, erklärt jedoch nur einen begrenzten Anteil
+  der individuellen Schadenvariabilität.
+- Das Severity-Modell basiert auf einem wesentlich kleineren Datenbestand.
+- Severity v2 verbessert v1, bleibt auf dem Holdout jedoch leicht schlechter
+  als die konstante Severity-Baseline.
+- Die Severity-Ranking-Fähigkeit ist sehr gering.
+- Die Kombination mit Severity verbessert den Loss-Gini gegenüber
+  Frequency allein nicht.
+- Fehlende Schadenhöhen begrenzen die direkte Pure-Premium-Kalibrierung.
+- Die ursprünglichen v1-Holdout-Ergebnisse waren bereits vor dem
+  Post-Audit-Review bekannt. Die neuen v2-Spezifikationen wurden zwar auf
+  Basis von Trainings-Cross-Validation ausgewählt, der Holdout kann deshalb
+  nicht als vollständig unangetasteter einmaliger Blindtest bezeichnet
+  werden.
+- Die Modelle liefern statistische Erwartungswerte und keine kausalen
+  Aussagen.
+- Das System berechnet annualisierte Risikokosten und keinen
+  Zeitreihen-Forecast.
+- Die Ergebnisse dienen als Decision Support und nicht als automatische
+  Annahme-, Ablehnungs- oder Tarifentscheidung.
+
+## 16. Finale Modellentscheidung
+
+Nach Abschluss der zusätzlichen Validierung wird folgende
+Modellkonfiguration weiterverwendet:
+
+### Frequency
+
+**Frequency v2**
+
+`frequency_poisson_quantile_spline_full_v2`
+
+Begründung:
+
+- beste Poisson-Deviance
+- bessere Holdout-Kalibrierung als v1
+- höherer Gini als v1
+- stabile Ergebnisse über wiederholte Cross-Validation
+- sehr geringe Portfolioabweichung
+
+Frequency v2 ist der primäre Risikodifferenzierer des Two-Stage-Modells.
+
+### Severity
+
+**Severity v2**
+
+`severity_gamma_spline_scaled_full_v2`
+
+Begründung:
+
+- bessere Holdout-Deviance als Severity v1
+- deutlich geringere Portfolioabweichung als v1
+- stabilere regularisierte Spezifikation
+- Large-Loss-Alternativen brachten keinen zusätzlichen Vorteil
+
+Die eingeschränkte Holdout- und Ranking-Leistung wird ausdrücklich
 dokumentiert.
 
-### Severity-Modell übertrifft Holdout-Baseline nicht
+Severity v2 wird deshalb hauptsächlich zur erwarteten monetären
+Schadenquantifizierung eingesetzt.
 
-Die beste Severity-Spline-Spezifikation verbessert die durchschnittliche
-Cross-Validation-Leistung gegenüber der fold-spezifischen Baseline.
+### Pure Premium
 
-Auf dem unabhängigen Holdout-Testdatensatz liegt die Mean Gamma Deviance des
-Modells jedoch über der konstanten Baseline.
+Die finale Two-Stage-Pure-Premium wird berechnet als:
 
-**Lösung:**
+`Frequency v2 × Severity v2`
 
-Die Holdout-Ergebnisse wurden nicht für eine nachträgliche Modellselektion
-oder erneutes Hyperparameter-Tuning verwendet.
-
-Die per Cross-Validation ausgewählte Spezifikation wurde beibehalten und die
-schwächere Generalisierungsfähigkeit als transparente Modelllimitierung
-dokumentiert.
-
-### Fehlende Schadenbeträge bei Schadenpolicen
-
-Für einen relevanten Teil der Schadenpolicen liegt kein beobachteter
-Schadenbetrag vor.
-
-Würden diese Fälle als Schadenbetrag null interpretiert, wäre die
-Pure-Premium-Bewertung systematisch verzerrt.
-
-**Lösung:**
-
-Fehlende Schadenbeträge wurden weiterhin als unbekannt behandelt.
-
-Frequency wird auf dem vollständigen Holdout bewertet. Schadenbetrags- und
-Pure-Premium-Vergleiche werden nur für beobachtbare Fälle durchgeführt und
-explizit als diagnostische Analysen gekennzeichnet.
-
-### Trennung von Evaluation und finaler Inferenz
-
-Ein auf dem vollständigen Datenbestand trainiertes Modell darf nicht zur
-unabhängigen Bewertung der Modellgüte verwendet werden.
-
-**Lösung:**
-
-Holdout-trainierte Modellartefakte und Full-Data-Inferenzmodelle werden
-getrennt gespeichert.
-
-Alle berichteten unabhängigen Modellmetriken stammen weiterhin aus der
-Holdout-Bewertung.
-
-Der Full-Data-Refit dient ausschließlich der finalen Portfolio-Inferenz.
-
-### Versionierung der finalen Predictions
-
-Eine Tabelle mit `idpol` als alleiniger Primärschlüssel würde zukünftige
-Scoring-Läufe überschreiben.
-
-**Lösung:**
-
-Jeder Scoring-Lauf erhält eine eindeutige `prediction_run_id`.
-
-Die Kombination aus `prediction_run_id` und `idpol` bildet den Primärschlüssel.
-Dadurch können spätere Modellversionen und Scoring-Läufe historisiert werden.
-
-## 4. Ergebnisse und fachliche Erkenntnisse
-
-Das finale Frequency-Modell zeigt eine stabile und fachlich plausible
+Frequency trägt dabei den überwiegenden Anteil der empirisch messbaren
 Risikodifferenzierung.
 
-Auf dem Holdout-Datensatz beträgt die Mean Poisson Deviance 0,601319 gegenüber
-0,625748 bei der konstanten Baseline.
+## 17. Abgeschlossene Arbeiten
 
-Die erwartete Holdout-Schadenanzahl von 7.211,98 liegt sehr nahe an den
-7.236 tatsächlich beobachteten Schäden.
+- Gemeinsamen Policy-Level-Train-/Test-Split erstellt und validiert
+- Split-Leakage über `IDpol` ausgeschlossen
+- `notebooks/04_frequency_model.ipynb` entwickelt und erweitert
+- Exposure-gewichtetes Poisson-Frequency-Modell aufgebaut
+- Frequency-Baseline berechnet
+- Cross-Validation und Hyperparametervergleich durchgeführt
+- Uniforme und quantilbasierte Spline-Knoten verglichen
+- Frequency v2 mit Quantile-Splines entwickelt
+- Frequency Holdout-Deviance und D² berechnet
+- Frequency Risk-Decile-Kalibrierung analysiert
+- Frequency Lorenz Curve und Gini berechnet
+- `notebooks/05_severity_model.ipynb` entwickelt und erweitert
+- Geeignete Severity-Teilmenge fachlich definiert
+- ClaimNb-gewichtetes Gamma-Severity-Modell aufgebaut
+- Severity-Baseline berechnet
+- Wiederholte stratifizierte Cross-Validation durchgeführt
+- gepoolte OOF-Deviance verwendet
+- selektive Skalierung getestet
+- Regularisierung mit 1-SE-Regel ausgewählt
+- Large-Loss-Sensitivitätsanalyse durchgeführt und verworfen
+- Severity v2 entwickelt und bewertet
+- Severity Lorenz Curve und Gini berechnet
+- `notebooks/06_model_comparison.ipynb` erweitert
+- Frequency und Severity zu Pure Premium kombiniert
+- Exposure-korrekte erwartete Claim-Anzahl berechnet
+- Exposure-korrekten erwarteten Schadenbetrag berechnet
+- ursprüngliche selektionsverzerrte Pure-Premium-Auswertung korrigiert
+- Frequency- und Severity-Kalibrierung getrennt ausgewiesen
+- Pure-Premium-Lorenzkurve und Loss-Gini berechnet
+- finale Modellentscheidung dokumentiert
+- Curated-Pipeline reproduzierbar ausführbar gemacht
+- Curated-Datensatz wertidentisch rekonstruiert
+- Frequency v2 auf vollständigem Portfolio neu trainiert
+- Severity v2 auf vollständigem geeigneten Datenbestand neu trainiert
+- vier v2-Modellartefakte versioniert gespeichert
+- Full-Data-Artefakte erneut geladen und exakt validiert
+- `model_predictions.pq` mit 678.013 Policen erstellt
+- eindeutige Prediction Run ID erzeugt
+- finale Modellversionen in den Predictions dokumentiert
+- `model_predictions` erfolgreich in PostgreSQL geladen
+- PostgreSQL-Zeilenanzahl, `IDpol` und Modellversionen mit DBeaver geprüft
 
-Die Risk-Decile-Analyse bestätigt eine klare und weitgehend monotone
-Differenzierung zwischen niedrigen und hohen Frequency-Risiken.
+## 18. Nächste Schritte
 
-Die Severity-Modellierung ist deutlich anspruchsvoller.
+Die Hauptmodelle werden ab diesem Punkt nicht weiter nachoptimiert.
 
-Obwohl die Spline-Spezifikation innerhalb der Cross-Validation zusätzliche
-Prognoseinformation gegenüber einer konstanten Baseline zeigt, lässt sich
-dieser Vorteil auf dem Holdout-Datensatz nicht stabil reproduzieren.
+Im nächsten technischen Arbeitspaket wird entsprechend dem Projektfahrplan
+der direkte Tweedie-Challenger entwickelt.
 
-Die Schadenhöhe wird stärker durch wenige extreme Großschäden und vermutlich
-durch Schadenmerkmale beeinflusst, die im vorhandenen Policy-Datensatz nicht
-enthalten sind.
+Dafür wird weiterhin derselbe kanonische Policy-Level-Split verwendet.
 
-Die kombinierte Pure Premium zeigt dennoch eine erkennbare
-Risikodifferenzierung.
+Geplante nächste Schritte:
 
-Das höchste prognostizierte Pure-Premium-Dezil weist auch die höchste
-beobachtete Pure Premium auf. Gleichzeitig überschätzt das Modell die
-Schadenbelastung in den höchsten Risikogruppen deutlich.
-
-Diese Überprognose steht insbesondere mit der eingeschränkten
-Generalisierungsfähigkeit des Severity-Modells in Zusammenhang.
-
-Die fehlenden Severity-Informationen treten zudem nicht gleichmäßig über die
-Risikodezile auf. Ihr Anteil steigt in den höheren prognostizierten
-Risikogruppen an.
-
-Die finale Portfolio-Scoring-Pipeline produziert für alle 678.013 Policen
-gültige und reproduzierbare Predictions.
-
-Für den Full-Data-Refit werden aggregiert 36.093,70 Schäden erwartet, während
-im Datenbestand 36.102 Schäden beobachtet werden.
-
-Dieser Vergleich dient ausschließlich als technischer Portfolio-Sanity-Check
-und nicht als unabhängige Modellgütebewertung.
-
-## 5. Offene Aufgaben
-
-- Tweedie-Regressionsmodell als Challenger entwickeln
+- Verfügbarkeit des Tweedie-Ziels prüfen
+- Tweedie-Ziel als
+  `total_claim_amount / Exposure` definieren
+- Exposure als `sample_weight` verwenden
+- ausschließlich Trainingsdaten für die Modellauswahl nutzen
+- geeignete Tweedie-Power-Werte vergleichen
+- Two-Stage-Modell und Tweedie auf identischer Bewertungsbasis vergleichen
 - Mean Tweedie Deviance berechnen
-- Lorenz-Kurve und Gini-Kennzahl ergänzen
-- Poisson × Gamma und Tweedie auf identischer Testbasis vergleichen
-- Finales Modell beziehungsweise finale Modellstrategie festlegen
-- Vier operative Risikosegmente definieren
-- Handlungsempfehlungen je Risikosegment ableiten
-- FastAPI-Scoring-Schnittstelle entwickeln
-- Finale Modelloutputs für Power BI vorbereiten
-- Modellkarten und technische Dokumentation weiter vervollständigen
+- Decile-Kalibrierung vergleichen
+- Lorenz- und Gini-Ergebnisse vergleichen
+- Erklärbarkeit der finalen GLM-Modelle dokumentieren
+- Risk Segments aus der Portfolioverteilung ableiten
+- fachliche Handlungsempfehlungen formulieren
+- anschließend die FastAPI-Schicht vorbereiten
 
-## 6. Nächste Schritte
+LightGBM bleibt optional und wird nur untersucht, wenn nach Abschluss der
+priorisierten Aufgaben ausreichend Zeit vorhanden ist.
 
-Im nächsten technischen Arbeitspaket wird ein Tweedie-Regressionsmodell als
-Challenger zur zweistufigen Poisson-Gamma-Modellstrategie entwickelt.
+## 19. Zusammenfassung
 
-Das Challenger-Modell wird auf demselben Policy-Level-Split und derselben
-unabhängigen Holdout-Basis bewertet.
+Das fünfte technische Arbeitspaket wurde erfolgreich abgeschlossen.
 
-Anschließend werden Poisson × Gamma und Tweedie mit geeigneten
-Deviance-Metriken, Risk-Decile-Kalibrierung sowie Lorenz-/Gini-Analysen
-verglichen.
+Der gemeinsame Train-/Test-Split wurde umgesetzt und sowohl das
+Frequency- als auch das Severity-Modell wurden auf einer konsistenten
+Datenbasis entwickelt.
 
-Auf Basis der finalen Risikoprognosen werden vier operative Risikosegmente
-abgeleitet und mit konkreten fachlichen Handlungsempfehlungen verknüpft.
+Durch die zusätzliche Post-Audit-Validierung konnte insbesondere das
+Frequency-Modell deutlich verbessert werden.
 
-Danach wird die Scoring-Logik über eine FastAPI-Schnittstelle für einzelne
-Policen und Batch-Anfragen bereitgestellt.
+Frequency v2 erreicht auf dem Holdout eine Mean Poisson Deviance von
+0,592685, eine Portfolioabweichung von nur −0,25 % und einen Gini von
+0,2903.
 
-## 7. Zusammenfassung
+Beim Severity-Modell konnten Deviance und Portfolioabweichung gegenüber
+der ersten Version verbessert werden. Gleichzeitig zeigt die Validierung
+klar, dass die verfügbaren Merkmale die individuelle Schadenhöhe nur sehr
+begrenzt differenzieren können.
 
-Die Hauptmodellierungsphase wurde erfolgreich abgeschlossen.
+Diese Einschränkung wird bewusst als fachliches Ergebnis dokumentiert und
+nicht durch weiteres Tuning verdeckt.
 
-Ein gemeinsamer, reproduzierbarer Train-/Test-Split bildet die Grundlage für
-die Frequency-, Severity- und Pure-Premium-Modellierung.
+Die finalen Frequency-v2- und Severity-v2-Modelle wurden auf dem
+vollständigen Datenbestand neu trainiert, versioniert gespeichert und
+erfolgreich auf exakte Reproduzierbarkeit geprüft.
 
-Das finale Poisson-Frequency-Modell zeigt auf dem unabhängigen Holdout eine
-stabile Verbesserung gegenüber der Baseline und eine gute
-Portfolio-Kalibrierung.
+Für alle 678.013 Policen wurden finale Frequency-, Severity- und
+Pure-Premium-Prognosen erzeugt und anschließend erfolgreich in PostgreSQL
+übertragen.
 
-Das Gamma-Severity-Modell liefert innerhalb der Cross-Validation zusätzliche
-Prognoseinformation, zeigt auf dem Holdout jedoch eine eingeschränkte
-Generalisierungsfähigkeit. Diese Modellgrenze wurde transparent dokumentiert
-und nicht durch nachträgliches Test-Tuning kaschiert.
-
-Frequency und Severity wurden erfolgreich zu einer prognostizierten Pure
-Premium zusammengeführt und über Risikodezile analysiert.
-
-Nach Abschluss der Holdout-Bewertung wurden die final festgelegten Modelle auf
-den vollständig verfügbaren Daten neu geschätzt und zur Erstellung von
-Policy-Level-Predictions für alle 678.013 Policen verwendet.
-
-Die finalen Prognosen wurden reproduzierbar gespeichert, in PostgreSQL geladen
-und über `vw_model_prediction_analysis` für nachgelagerte Analysen
-bereitgestellt.
-
-Damit ist das technische Arbeitspaket Woche 5 abgeschlossen und die Grundlage
-für Challenger-Modellierung, finale Risikosegmentierung und API-Scoring
-geschaffen.
+Damit stehen nun ein reproduzierbarer Curated Layer, versionierte
+Hauptmodelle, validierte Policy-Level-Prognosen und eine vollständig
+befüllte `model_predictions`-Schicht als Grundlage für den folgenden
+Tweedie-Challenger und die weitere Decision-Support-Schicht zur Verfügung.

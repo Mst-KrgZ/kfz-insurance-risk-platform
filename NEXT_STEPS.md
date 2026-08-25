@@ -1,6 +1,6 @@
 # NEXT STEPS
 
-**Stand:** 24.08.2026
+**Stand:** 25.08.2026
 
 ## 1. Aktueller Projektstatus
 
@@ -8,44 +8,125 @@ Die technischen Arbeitspakete Woche 1 bis Woche 5 wurden erfolgreich
 abgeschlossen beziehungsweise vorgezogen umgesetzt.
 
 Die Datenbeschaffung, Ingestion, Data-Quality-Prüfungen, Curated-Schicht,
-PostgreSQL-Analytics-Layer und die geschäftsorientierte explorative
-Datenanalyse sind vollständig umgesetzt.
+PostgreSQL-Analytics-Layer, explorative Datenanalyse sowie die
+Hauptmodellierung sind vollständig umgesetzt.
 
 Der policenbasierte Curated-Datensatz umfasst 678.013 Policen und 25 Spalten.
 
-Nach dem erfolgreichen End-to-End-Kontrollpunkt wurde die Hauptmodellierung
-auf Basis eines einmalig definierten und reproduzierbaren Policy-Level-
-Train/Test-Splits durchgeführt.
+Die Curated-Schicht wurde im Rahmen eines zusätzlichen technischen Reviews
+erneut aus dem versionierten Source Code aufgebaut. Der rekonstruierte
+Datensatz ist wertidentisch mit dem bestehenden `policy_curated.pq`.
+Damit ist die Curated-Pipeline reproduzierbar ausführbar.
 
-Für die Schadenhäufigkeit wurde ein Poisson-Modell mit Spline-basiertem
-Feature Engineering entwickelt und über Cross-Validation optimiert. Das
-finale Holdout-Modell erreicht eine Mean Poisson Deviance von 0,601319 und
-eine sehr gute Portfolio-Kalibrierung mit 7.211,98 prognostizierten gegenüber
-7.236 tatsächlich beobachteten Schäden.
+Für Frequency und Severity wird ein gemeinsamer, einmalig definierter
+Policy-Level-Train/Test-Split verwendet.
 
-Für die Schadenhöhe wurde ein Gamma-Modell entwickelt. Die Spline-
-Spezifikation zeigte innerhalb der Cross-Validation die beste Leistung,
-konnte die konstante Severity-Baseline auf dem Holdout-Datensatz jedoch nicht
-übertreffen. Diese eingeschränkte Generalisierungsfähigkeit wurde als
-Modelllimitierung dokumentiert.
+Nach der ursprünglichen Modellierung wurde ein Post-Audit-Quality-Pass
+durchgeführt. Dabei wurden die wichtigsten Modellannahmen und
+Validierungsverfahren erneut geprüft und gezielt verbessert.
 
-Frequency und Severity wurden anschließend zur prognostizierten Pure Premium
-zusammengeführt. Die Risk-Decile-Analyse zeigt eine erkennbare
-Risikodifferenzierung, gleichzeitig jedoch eine Überprognose in den höchsten
-Risikogruppen. Die Interpretation der Schadenbetragskalibrierung berücksichtigt
-explizit die fehlenden Severity-Informationen bei einem Teil der Schadenpolicen.
+Als finale Hauptmodelle wurden festgelegt:
 
-Nach Abschluss der Holdout-Bewertung wurden die festgelegten Frequency- und
-Severity-Spezifikationen auf den vollständig verfügbaren Daten neu geschätzt.
-Damit wurden für alle 678.013 Policen finale Policy-Level-Prognosen erzeugt.
+- Frequency:
+  `frequency_poisson_quantile_spline_full_v2`
+- Severity:
+  `severity_gamma_spline_scaled_full_v2`
 
-Die finalen Prognosen wurden reproduzierbar gespeichert und anschließend in
-die PostgreSQL-Tabelle `model_predictions` geladen. Die View
-`vw_model_prediction_analysis` stellt den aktuellsten Scoring-Lauf für
-nachgelagerte Analysen und Power BI bereit.
+Frequency v2 verbessert die Holdout Mean Poisson Deviance auf 0,592685,
+erreicht ein Poisson-D² von 0,0528 und eine Portfolioabweichung von nur
+−0,25 %. Der Frequency-Gini steigt gegenüber v1 von 0,2683 auf 0,2903.
 
-Der aktuelle technische Stand ist auf GitHub versioniert und der Working Tree
-ist clean.
+Severity v2 verbessert die erste Severity-Version, bleibt auf dem Holdout
+jedoch leicht schlechter als die konstante Gamma-Baseline. Die finale
+Holdout Mean Gamma Deviance beträgt 1,567498 gegenüber 1,543630 für die
+Baseline. Die Portfolioabweichung verbessert sich von +7,19 % auf +3,99 %.
+
+Die Severity-Komponente besitzt nur eine sehr geringe Ranking-Fähigkeit
+(Gini 0,0033). Sie wird deshalb primär zur monetären Quantifizierung der
+erwarteten Schadenhöhe eingesetzt. Frequency v2 bleibt der wichtigste
+Risikodifferenzierer.
+
+Die Pure-Premium-Auswertung wurde methodisch korrigiert. Die zuvor
+beobachtete Abweichung von +37,79 % auf dem Teilbestand mit vollständig
+beobachtbarer Schadenhöhe wird nicht als unbiased Modellkalibrierung
+interpretiert, da dieser Vergleich durch fehlende Severity-Informationen
+selektionsverzerrt ist.
+
+Die finale Pure Premium wird weiterhin berechnet als:
+
+`Predicted Pure Premium = Predicted Frequency × Predicted Severity`
+
+Lorenz- und Gini-Auswertungen wurden bereits durchgeführt.
+
+Ergebnisse:
+
+- Frequency v1 Gini: 0,2683
+- Frequency v2 Gini: 0,2903
+- Severity v1 Gini: 0,0333
+- Severity v2 Gini: 0,0033
+- Frequency-only Loss Gini: 0,2372
+- Pure-Premium-v2 Loss Gini: 0,2358
+
+Die Severity-Komponente verbessert die Loss-Rangfolge gegenüber Frequency
+allein nicht. Dieses Ergebnis wird als fachliche Modellgrenze dokumentiert.
+
+Nach Abschluss der Modellauswahl wurden Frequency v2 und Severity v2 auf
+dem vollständig verfügbaren Datenbestand neu trainiert.
+
+Finale Full-Data-Artefakte:
+
+- `models/frequency_poisson_quantile_spline_full_v2.joblib`
+- `models/severity_gamma_spline_scaled_full_v2.joblib`
+
+Finale Holdout-Artefakte:
+
+- `models/frequency_poisson_quantile_spline_holdout_v2.joblib`
+- `models/severity_gamma_spline_scaled_holdout_v2.joblib`
+
+Die Full-Data-Artefakte wurden erneut geladen und auf dem gesamten Portfolio
+ausgeführt.
+
+Ergebnis:
+
+- Frequency-Prognosen exakt reproduziert
+- Severity-Prognosen exakt reproduziert
+- maximale absolute Abweichung jeweils 0,000000000000
+
+Für alle 678.013 Policen wurde anschließend ein neuer finaler
+Prediction Run erzeugt.
+
+Prediction Run ID:
+
+`3e79d43b-d9e2-4edf-9056-be0827aa22f0`
+
+Die finale Datei
+
+`data/output/model_predictions.pq`
+
+enthält:
+
+- 678.013 Zeilen
+- 678.013 eindeutige `IDpol`
+- 0 Duplikate
+- 0 Missing Values
+- 1 Prediction Run
+
+Die Prediction-Datei wurde erfolgreich in PostgreSQL geladen.
+
+PostgreSQL-Validierung:
+
+- `model_predictions`: 678.013 Zeilen
+- eindeutige `IDpol`: 678.013
+- Frequency-Modell:
+  `frequency_poisson_quantile_spline_full_v2`
+- Severity-Modell:
+  `severity_gamma_spline_scaled_full_v2`
+
+Damit ist der vollständige Pfad
+
+`Curated Data → Modellierung → Full-Data-Refit → Artifact → Parquet → PostgreSQL`
+
+für die finalen v2-Hauptmodelle reproduzierbar validiert.
 
 ## 2. Bereits abgeschlossen
 
@@ -56,10 +137,10 @@ ist clean.
 - [X] `requirements.txt` erstellt und aktualisiert
 - [X] `docs/business_understanding.md` erstellt
 - [X] `docs/data_dictionary.md` erstellt
-- [X] PostgreSQL 17 lokal installiert
+- [X] PostgreSQL lokal eingerichtet
 - [X] Projektdatenbank `kfz_insurance` eingerichtet
 - [X] PostgreSQL-Rolle `kfz_app` eingerichtet
-- [X] PostgreSQL-Verbindung mit `psql`, DBeaver und Power BI getestet
+- [X] PostgreSQL-Verbindung mit Terminal, DBeaver und Power BI getestet
 
 ### Datenbeschaffung und Ingestion
 
@@ -69,11 +150,11 @@ ist clean.
 - [X] Raw-Daten unverändert gespeichert
 - [X] Source Manifest mit Dateigrößen und SHA256-Prüfsummen erstellt
 - [X] OpenML-Datensatzversionen dokumentiert
-- [X] Ingestion-Pipeline in `src/ingestion/fetch_openml.py` entwickelt
+- [X] Ingestion-Pipeline entwickelt
 - [X] Schema- und Datentypprüfungen implementiert
 - [X] Logging und Fehlerbehandlung umgesetzt
-- [X] Pipeline-Läufe in `pipeline_runs.jsonl` dokumentiert
-- [X] Wiederholte Pipeline-Ausführung erfolgreich validiert
+- [X] Pipeline-Läufe dokumentiert
+- [X] Wiederholte Pipeline-Ausführung validiert
 
 ### Data Quality
 
@@ -86,33 +167,36 @@ ist clean.
 - [X] Orphan-Severity-Datensätze identifiziert
 - [X] Potenzielle Duplikate geprüft
 - [X] Join-Kardinalität geprüft
-- [X] DQ-Ergebnisse mit `PASS`, `WARN` und `FAIL` standardisiert
-- [X] DQ-Historie dauerhaft gespeichert
+- [X] DQ-Ergebnisse standardisiert
+- [X] DQ-Historie gespeichert
 - [X] `docs/data_quality_report.md` erstellt und aktualisiert
-- [X] Manuelle Validierung in `notebooks/02_data_quality.ipynb` durchgeführt
-- [X] Automatisierte und manuelle DQ-Ergebnisse miteinander abgeglichen
+- [X] Manuelle Notebook-Validierung durchgeführt
+- [X] Automatisierte und manuelle DQ-Ergebnisse abgeglichen
 
 ### Curated Layer und Feature Engineering
 
-- [X] Severity-Daten vor dem Join auf `IDpol` aggregiert
+- [X] Severity vor dem Join auf `IDpol` aggregiert
 - [X] `total_claim_amount` berechnet
 - [X] `claim_record_count` berechnet
-- [X] 195 Orphan-Severity-Zeilen aus der analytischen Schicht ausgeschlossen
-- [X] `Exposure > 1` auf 1,0 begrenzt
+- [X] Orphan-Severity-Datensätze ausgeschlossen
+- [X] Exposure-Capping umgesetzt
 - [X] `exposure_capped` erstellt
 - [X] `high_claim_count` erstellt
 - [X] `missing_severity` erstellt
 - [X] `claim_count_mismatch` erstellt
-- [X] Unbekannte Schadenhöhen nicht mit null imputiert
-- [X] `observed_claim_frequency` berechnet
-- [X] `observed_severity` berechnet
-- [X] `observed_pure_premium` berechnet
+- [X] unbekannte Schadenhöhen nicht mit null imputiert
+- [X] beobachtete Frequency berechnet
+- [X] beobachtete Severity berechnet
+- [X] beobachtete Pure Premium berechnet
 - [X] Fahrer-Altersgruppen erstellt
 - [X] Fahrzeugalter-Gruppen erstellt
 - [X] Bonus-Malus-Segmente erstellt
 - [X] `log_density` erstellt
-- [X] `data/processed/policy_curated.pq` mit 678.013 Policen und 25 Spalten erstellt
-- [X] Curated Layer technisch validiert
+- [X] `policy_curated.pq` mit 678.013 Policen und 25 Spalten erstellt
+- [X] Curated Layer fachlich validiert
+- [X] Curated-Pipeline über `src/preprocessing/build_curated.py` reproduzierbar gemacht
+- [X] Curated-Datensatz vollständig rekonstruiert
+- [X] Rekonstruierten und bestehenden Curated-Datensatz wertidentisch validiert
 
 ### PostgreSQL Analytics Layer
 
@@ -122,112 +206,169 @@ ist clean.
 - [X] `fact_claim` erstellt und befüllt
 - [X] `pipeline_runs` erstellt und befüllt
 - [X] `dq_check_results` erstellt und befüllt
-- [X] `vw_policy_risk_base` erstellt
-- [X] `vw_claim_analysis` erstellt
-- [X] `vw_dq_summary` erstellt
+- [X] analytische Views erstellt
 - [X] JSON-Strukturen als PostgreSQL `JSONB` gespeichert
 - [X] Tabellen und Views über SQL-Abfragen validiert
 
 ### Explorative Datenanalyse
 
 - [X] `notebooks/03_eda.ipynb` erstellt
-- [X] Curated-Datenstruktur erneut interaktiv geprüft
-- [X] Fehlende Werte und Duplikate geprüft
-- [X] Feature-Gruppen und Segmentgrenzen validiert
-- [X] Fahrer-Alter und Schadenfrequenz analysiert
-- [X] Fahrzeugalter und Schadenfrequenz analysiert
-- [X] Fahrzeugleistung analysiert
-- [X] Bonus-Malus und Schadenfrequenz analysiert
-- [X] Area analysiert
-- [X] Region analysiert
-- [X] Density analysiert
-- [X] Kraftstoffart analysiert
-- [X] Schadenhöhenverteilung und Tail-Effekt untersucht
-- [X] Beobachteten Pure Premium nach Risikosegmenten analysiert
-- [X] Tatsächliche Portfoliokennzahlen dokumentiert
-- [X] Severity-Matching-Quote von 99,27 % dokumentiert
-- [X] Severity-Abdeckung bei Schadenpolicen von 73,24 % dokumentiert
-- [X] Spearman-Korrelationsanalyse und Heatmap erstellt
-- [X] Starke Konzentration von `ClaimNb = 0` untersucht
+- [X] Datenstruktur, Missing Values und Duplikate geprüft
+- [X] Frequency nach relevanten Risikomerkmalen analysiert
+- [X] Severity-Verteilung und Heavy-Tail-Effekt untersucht
+- [X] Pure Premium nach Risikosegmenten analysiert
+- [X] Portfolio-Kennzahlen dokumentiert
+- [X] Severity-Abdeckung dokumentiert
+- [X] Korrelationsanalyse durchgeführt
 - [X] Exposure-Verteilung analysiert
-- [X] EDA mit abschließendem Fazit dokumentiert
-- [X] Notebook mit Restart Kernel + Run All erfolgreich validiert
+- [X] EDA vollständig dokumentiert
+- [X] Notebook mit Restart Kernel + Run All validiert
 
-### Kritischer End-to-End-Kontrollpunkt
+### End-to-End-Kontrollpunkt
 
-- [X] `src/models/checkpoint_poisson.py` erstellt
-- [X] Modellierungsdaten direkt aus `vw_policy_risk_base` geladen
-- [X] Numerische und kategorische Features in einer sklearn-Pipeline verarbeitet
-- [X] Annualisierte Frequency als `ClaimNb / Exposure` verwendet
-- [X] `Exposure` als Sample Weight verwendet
-- [X] Ein einfaches `PoissonRegressor`-Modell erfolgreich trainiert
-- [X] Policy-Level-Frequency-Vorhersagen erzeugt
-- [X] `predicted_claim_count = predicted_frequency × Exposure` berechnet
-- [X] Beobachtete Portfoliofrequenz von ca. 0,100742 validiert
-- [X] Prognostizierte Portfoliofrequenz von ca. 0,100733 validiert
-- [X] `policy_frequency_predictions` als Checkpoint-Tabelle erstellt
-- [X] Primärschlüssel `(idpol, model_name)` eingerichtet
-- [X] 678.013 Prediction-Zeilen mit PostgreSQL `COPY` gespeichert
-- [X] `vw_frequency_prediction_analysis` erstellt
-- [X] SQL-seitige Prediction-Zahlen kontrolliert
-- [X] `powerbi/week4_checkpoint.pbix` erstellt
-- [X] PostgreSQL-Prediction-View in Power BI importiert
-- [X] Separate `KPI_Measures`-Tabelle erstellt
-- [X] `Total Exposure` als DAX Measure erstellt
-- [X] `Actual Claims` als DAX Measure erstellt
-- [X] `Predicted Claims` als DAX Measure erstellt
-- [X] `Actual Frequency` als DAX Measure erstellt
-- [X] `Predicted Frequency` als DAX Measure erstellt
-- [X] Actual vs. Predicted Frequency nach Area visualisiert
-- [X] Kritischen End-to-End-Kontrollpunkt erfolgreich abgeschlossen
+- [X] PostgreSQL → Python → Modell → PostgreSQL → Power BI getestet
+- [X] einfachen Poisson-Checkpoint entwickelt
+- [X] 678.013 Policy-Level-Predictions erzeugt
+- [X] Prediction-Tabelle und View erstellt
+- [X] Power-BI-Checkpoint umgesetzt
+- [X] End-to-End-Datenfluss erfolgreich validiert
 
-### Hauptmodelle und Pure Premium
+### Gemeinsamer Modell-Split
 
-- [X] Gemeinsamen Policy-Level-Train/Test-Split erstellt
-- [X] Split-Artefakt reproduzierbar gespeichert und validiert
-- [X] Train-/Test-Leakage ausgeschlossen
-- [X] `notebooks/04_frequency_model.ipynb` erstellt
-- [X] Exposure-korrekte Poisson-Frequency-Modellierung umgesetzt
-- [X] 5-Fold-Cross-Validation durchgeführt
-- [X] Grouped-, Raw- und Spline-Spezifikationen verglichen
-- [X] Spline-Hyperparameter innerhalb der Trainingsdaten optimiert
-- [X] Finales Frequency-Modell mit 6 Knoten, Grad 3 und `alpha=0` festgelegt
-- [X] Holdout Mean Poisson Deviance von 0,601319 erreicht
-- [X] Poisson-D² von 0,0390 dokumentiert
-- [X] Frequency-Kalibrierung nach Risikodezilen durchgeführt
-- [X] Holdout-Portfoliofrequenz exposure-korrekt validiert
-- [X] Frequency-Holdout-Modell als reproduzierbares Artefakt gespeichert
-- [X] `notebooks/05_severity_model.ipynb` erstellt
-- [X] Konsistente Severity-Eligibility-Regeln umgesetzt
-- [X] ClaimNb-gewichtete Gamma-Modellierung umgesetzt
-- [X] Grouped-, Raw- und Spline-Severity-Spezifikationen verglichen
-- [X] Severity-Spline-Hyperparameter per Cross-Validation optimiert
-- [X] Finales Severity-Modell mit 6 Knoten, Grad 3 und `alpha=0` festgelegt
-- [X] Holdout Mean Gamma Deviance von 1,615760 dokumentiert
-- [X] Eingeschränkte Severity-Generalisation gegenüber der Baseline dokumentiert
-- [X] Severity-Kalibrierung und Heavy-Tail-Effekte analysiert
-- [X] Severity-Holdout-Modell als reproduzierbares Artefakt gespeichert
-- [X] `notebooks/05_severity_model.ipynb` mit Restart Kernel + Run All validiert
+- [X] einmaligen Policy-Level-Train/Test-Split erstellt
+- [X] Split-Artefakt gespeichert
+- [X] 542.410 Train-Policen
+- [X] 135.603 Test-Policen
+- [X] Überschneidung der `IDpol`: 0
+- [X] Frequency und Severity verwenden denselben Split
+- [X] Split wird für weitere Challenger-Modelle nicht neu erzeugt
+
+### Frequency v1
+
+- [X] Exposure-gewichtetes Poisson-Modell entwickelt
+- [X] Baseline berechnet
+- [X] Cross-Validation durchgeführt
+- [X] uniforme Spline-Spezifikation entwickelt
+- [X] Holdout Mean Poisson Deviance 0,601319
+- [X] Poisson-D² 0,0390
+- [X] Portfolioabweichung −0,33 %
+- [X] Gini 0,2683
+- [X] Holdout- und Full-Data-Artefakte gespeichert
+
+### Frequency v2 / Post-Audit
+
+- [X] Uniform- und Quantile-Knoten über wiederholte CV verglichen
+- [X] Quantile-Knoten über alle fünf Seeds stabil besser
+- [X] Knotenzahl und Grad ausschließlich auf Trainingsdaten optimiert
+- [X] `n_knots = 8`
+- [X] `degree = 2`
+- [X] `knots = "quantile"`
+- [X] `alpha = 0.0`
+- [X] `log_density` linear belassen
+- [X] Holdout Mean Poisson Deviance 0,592685
+- [X] Poisson-D² 0,0528
+- [X] Portfolioabweichung −0,25 %
+- [X] Frequency-Gini 0,2903
+- [X] Frequency v2 als finales Frequency-Modell festgelegt
+- [X] Holdout-v2-Artefakt gespeichert
+- [X] Full-Data-v2-Artefakt gespeichert
+
+### Severity v1
+
+- [X] konsistente Severity-Eligibility-Regeln umgesetzt
+- [X] ClaimNb-gewichtetes Gamma-Modell entwickelt
+- [X] Baseline berechnet
+- [X] Cross-Validation durchgeführt
+- [X] ursprüngliche Spline-Spezifikation entwickelt
+- [X] Holdout Mean Gamma Deviance 1,615760
+- [X] Gamma-D² −0,0540
+- [X] Portfolioabweichung +7,19 %
+- [X] eingeschränkte Holdout-Generalisation dokumentiert
+- [X] Holdout- und Full-Data-Artefakte gespeichert
+
+### Severity v2 / Post-Audit
+
+- [X] wiederholte stratifizierte 5-Fold-CV mit fünf Seeds durchgeführt
+- [X] gepoolte Out-of-Fold-Metriken berechnet
+- [X] CV-Signal gegenüber Baseline über alle fünf Seeds bestätigt
+- [X] vollständige Matrix-Skalierung diagnostisch getestet und verworfen
+- [X] selektive Skalierung numerischer Modellblöcke umgesetzt
+- [X] Regularisierung untersucht
+- [X] 1-SE-Regel angewendet
+- [X] `alpha = 1.0` als finale v2-Spezifikation festgelegt
+- [X] Large-Loss-Capping und Loading untersucht
+- [X] Large-Loss-Varianten verworfen
+- [X] Holdout Mean Gamma Deviance 1,567498
+- [X] Gamma-D² −0,0155
+- [X] Portfolioabweichung +3,99 %
+- [X] Severity-Gini 0,0033
+- [X] Severity-v2-Limitierung gegenüber Baseline dokumentiert
+- [X] Severity v2 als finale monetäre Severity-Komponente festgelegt
+- [X] Holdout-v2-Artefakt gespeichert
+- [X] Full-Data-v2-Artefakt gespeichert
+
+### Pure Premium und Modellvergleich
+
 - [X] `notebooks/06_model_comparison.ipynb` erstellt
-- [X] Predicted Pure Premium als Frequency × Severity berechnet
+- [X] Frequency und Severity kombiniert
+- [X] Predicted Pure Premium berechnet
 - [X] Expected Claim Count exposure-korrekt berechnet
 - [X] Expected Claim Amount exposure-korrekt berechnet
-- [X] Pure-Premium-Risikodezile analysiert
-- [X] Datenlimitation durch fehlende Severity-Informationen dokumentiert
-- [X] Frequency- und Severity-Modelle auf Full Data neu geschätzt
-- [X] Full-Data-Modellartefakte gespeichert und reproduzierbar validiert
-- [X] Finales Scoring für alle 678.013 Policen durchgeführt
-- [X] `data/output/model_predictions.pq` erzeugt
-- [X] PostgreSQL-Tabelle `model_predictions` erstellt
-- [X] 678.013 finale Prediction-Zeilen mit PostgreSQL `COPY` gespeichert
-- [X] Prediction-Run- und Modellversionierung implementiert
-- [X] `vw_model_prediction_analysis` erstellt
-- [X] Python- und PostgreSQL-Aggregate vollständig abgeglichen
+- [X] ursprüngliche +37,79-%-Auswertung als selection-biased identifiziert
+- [X] Frequency- und Severity-Kalibrierung getrennt berichtet
+- [X] Pure-Premium-Diagnostik methodisch korrigiert
+- [X] Frequency-Lorenzkurve erstellt
+- [X] Severity-Lorenzkurve erstellt
+- [X] Pure-Premium-Lorenzkurve erstellt
+- [X] Frequency-Gini berechnet
+- [X] Severity-Gini berechnet
+- [X] Pure-Premium-Loss-Gini berechnet
+- [X] Frequency-only Loss Gini 0,2372
+- [X] Pure-Premium-v2 Loss Gini 0,2358
+- [X] finale Modellentscheidung dokumentiert
+
+### Finaler Full-Data-Refit und Artefakte
+
+- [X] Frequency v2 auf allen 678.013 Policen neu trainiert
+- [X] Severity v2 auf allen 24.943 geeigneten Policen neu trainiert
+- [X] Frequency Full Refit erfolgreich abgeschlossen
+- [X] Severity Full Refit erfolgreich abgeschlossen
+- [X] finale v2-Modellartefakte gespeichert
+- [X] v1-Artefakte separat erhalten
+- [X] Full-Data-v2-Artefakte erneut geladen
+- [X] Frequency-Prognosen exakt reproduziert
+- [X] Severity-Prognosen exakt reproduziert
+- [X] maximale absolute Differenz jeweils 0
+
+### Finale Prediction-Schicht
+
+- [X] neuen Prediction Run erzeugt
+- [X] Frequency-v2-Modellversion dokumentiert
+- [X] Severity-v2-Modellversion dokumentiert
+- [X] 678.013 Policy-Level-Predictions erzeugt
+- [X] `model_predictions.pq` gespeichert
+- [X] 0 doppelte `IDpol`
+- [X] 0 Missing Values
+- [X] `model_predictions` in PostgreSQL geladen
+- [X] 678.013 Prediction-Zeilen in PostgreSQL validiert
+- [X] eindeutige `IDpol` in PostgreSQL validiert
+- [X] Prediction Run ID in DBeaver geprüft
+- [X] finale v2-Modellversionen in PostgreSQL geprüft
+
+### Dokumentation
+
+- [X] `docs/statusbericht_woche_5.md` nach Post-Audit-Review vollständig aktualisiert
+- [X] Frequency-v2-Ergebnisse dokumentiert
+- [X] Severity-v2-Ergebnisse dokumentiert
+- [X] Severity-Limitierung transparent dokumentiert
+- [X] Pure-Premium-Selektionseffekt dokumentiert
+- [X] Lorenz-/Gini-Ergebnisse dokumentiert
+- [X] finale Modellentscheidung dokumentiert
+- [X] PostgreSQL-v2-Integration dokumentiert
 
 ## 3. Aktueller technischer Kontrollpunkt
 
-Der aktuelle technische Stand bestätigt die vollständige Modellierungs- und
-Prediction-Pipeline:
+Der aktuelle technische Stand:
 
 ```text
 OpenML / Raw Data
@@ -236,41 +377,33 @@ Python Ingestion
         ↓
 Data Quality
         ↓
-Curated Layer
+Reproduzierbarer Curated Layer
         ↓
 PostgreSQL Analytics Layer
         ↓
-Gemeinsamer Train/Test-Split
+Kanonischer Policy-Level Train/Test Split
         ↓
-Poisson Frequency + Gamma Severity
+Frequency v2 + Severity v2
         ↓
 Holdout Evaluation
         ↓
+Lorenz / Gini / Calibration
+        ↓
 Predicted Pure Premium
         ↓
-Full-Data-Refit
+Finaler Full-Data-Refit
+        ↓
+Versionierte v2-Modellartefakte
+        ↓
+Artifact Reload Validation
         ↓
 Policy-Level Scoring
+        ↓
+model_predictions.pq
         ↓
 PostgreSQL model_predictions
         ↓
 vw_model_prediction_analysis
         ↓
-Power BI / weitere Modellvergleiche
+Power BI / Challenger / Decision Support
 ```
-
-## 4. Nächste technische Schritte
-
-Der nächste technische Arbeitsblock beginnt mit dem Challenger-Modell und
-wird erst nach dem Abschluss der Dokumentations- und Reporting-Aufgaben der
-aktuellen Modellierungsphase gestartet.
-
-Geplante nächste Schritte:
-
-1. TweedieRegressor als Challenger-Modell entwickeln
-2. Mean Tweedie Deviance berechnen
-3. Lorenz-/Gini-Analyse ergänzen
-4. Poisson × Gamma und Tweedie fair vergleichen
-5. Vier finale Risikosegmente definieren
-6. Handlungsempfehlungen je Risikosegment ableiten
-7. FastAPI-Endpunkte für Policy- und Batch-Scoring vorbereiten
