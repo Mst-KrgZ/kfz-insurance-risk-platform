@@ -1,3 +1,4 @@
+from bisect import bisect_left
 from pathlib import Path
 
 import joblib
@@ -31,42 +32,64 @@ RISK_Q75 = 187.904073
 RISK_Q90 = 328.242187
 
 
+# Locked decile thresholds from the full-portfolio
+# Tweedie Pure Premium distribution.
+RISK_DECILE_THRESHOLDS = (
+    64.796231,
+    79.664977,
+    92.068111,
+    104.717346,
+    119.348996,
+    138.353633,
+    166.781609,
+    217.215693,
+    328.242187,
+)
+
+
 ACTION_CONFIG = {
-    "Low": {
+    "LOW": {
         "priority": "Standard",
-        "recommended_action": "Standard portfolio monitoring",
+        "recommended_action": "Standard process",
         "decision_rule": "Decision support only",
     },
-    "Medium": {
+    "STANDARD": {
         "priority": "Moderate",
-        "recommended_action": (
-            "Regular segment monitoring and comparison"
-        ),
+        "recommended_action": "Standard process",
         "decision_rule": "Decision support only",
     },
-    "High": {
+    "ELEVATED": {
         "priority": "High",
         "recommended_action": (
-            "Enhanced underwriting and pricing review"
-        ),
-        "decision_rule": "Manual review supported by model",
-    },
-    "Very High": {
-        "priority": "Very High",
-        "recommended_action": (
-            "Priority underwriting review and intensive "
-            "portfolio monitoring"
+            "Additional review recommended"
         ),
         "decision_rule": (
-            "Priority manual review supported by model"
+            "Model-supported additional review"
+        ),
+    },
+    "HIGH": {
+        "priority": "Very High",
+        "recommended_action": (
+            "Manual underwriting review recommended"
+        ),
+        "decision_rule": (
+            "Manual review supported by model"
         ),
     },
 }
 
 
-frequency_model = joblib.load(FREQUENCY_MODEL_PATH)
-severity_model = joblib.load(SEVERITY_MODEL_PATH)
-tweedie_model = joblib.load(TWEEDIE_MODEL_PATH)
+frequency_model = joblib.load(
+    FREQUENCY_MODEL_PATH
+)
+
+severity_model = joblib.load(
+    SEVERITY_MODEL_PATH
+)
+
+tweedie_model = joblib.load(
+    TWEEDIE_MODEL_PATH
+)
 
 
 def models_loaded() -> bool:
@@ -84,21 +107,35 @@ def assign_risk_segment(
     tweedie_pure_premium: float,
 ) -> str:
     if tweedie_pure_premium <= RISK_Q50:
-        return "Low"
+        return "LOW"
 
     if tweedie_pure_premium <= RISK_Q75:
-        return "Medium"
+        return "STANDARD"
 
     if tweedie_pure_premium <= RISK_Q90:
-        return "High"
+        return "ELEVATED"
 
-    return "Very High"
+    return "HIGH"
+
+
+def assign_risk_decile(
+    tweedie_pure_premium: float,
+) -> int:
+    return (
+        bisect_left(
+            RISK_DECILE_THRESHOLDS,
+            tweedie_pure_premium,
+        )
+        + 1
+    )
 
 
 def predict_policy(
     policy_data: dict,
 ) -> dict:
-    exposure = float(policy_data["Exposure"])
+    exposure = float(
+        policy_data["Exposure"]
+    )
 
     feature_columns = [
         "VehPower",
@@ -156,7 +193,13 @@ def predict_policy(
         predicted_pp_tweedie
     )
 
-    action = ACTION_CONFIG[risk_segment]
+    risk_decile = assign_risk_decile(
+        predicted_pp_tweedie
+    )
+
+    action = ACTION_CONFIG[
+        risk_segment
+    ]
 
     return {
         "predicted_claim_frequency":
@@ -175,6 +218,8 @@ def predict_policy(
             expected_loss_tweedie,
         "risk_segment":
             risk_segment,
+        "risk_decile":
+            risk_decile,
         "priority":
             action["priority"],
         "recommended_action":

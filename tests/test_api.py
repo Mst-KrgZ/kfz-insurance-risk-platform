@@ -30,9 +30,44 @@ def test_health_endpoint():
     }
 
 
-def test_predict_endpoint():
+def test_risk_score_endpoint():
     response = client.post(
-        "/predict",
+        "/risk-score",
+        json=VALID_POLICY,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["predicted_pure_premium_tweedie"] == pytest.approx(
+        370.5788741,
+        rel=1e-6,
+    )
+
+    assert body["expected_loss_tweedie"] == pytest.approx(
+        296.4630993,
+        rel=1e-6,
+    )
+
+    assert body["risk_segment"] == "HIGH"
+    assert body["risk_decile"] == 10
+    assert body["priority"] == "Very High"
+
+    assert (
+        body["recommended_action"]
+        == "Manual underwriting review recommended"
+    )
+
+    assert (
+        body["decision_rule"]
+        == "Manual review supported by model"
+    )
+
+
+def test_pure_premium_endpoint():
+    response = client.post(
+        "/pure-premium",
         json=VALID_POLICY,
     )
 
@@ -48,13 +83,9 @@ def test_predict_endpoint():
         "expected_loss_two_stage",
         "predicted_pure_premium_tweedie",
         "expected_loss_tweedie",
-        "risk_segment",
-        "priority",
-        "recommended_action",
-        "decision_rule",
     }
 
-    assert expected_fields.issubset(body.keys())
+    assert expected_fields == set(body.keys())
 
     assert body["predicted_claim_frequency"] == pytest.approx(
         0.1191826692,
@@ -66,28 +97,58 @@ def test_predict_endpoint():
         rel=1e-6,
     )
 
-    assert body["risk_segment"] == "Very High"
-    assert body["priority"] == "Very High"
+
+def test_data_quality_summary_endpoint():
+    response = client.get(
+        "/data-quality-summary"
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["status"] == "ok"
+
+    summary = body["summary"]
+
+    assert summary["checks_total"] > 0
+    assert summary["overall_status"] in {
+        "PASS",
+        "WARN",
+        "FAIL",
+    }
+
+    assert (
+        summary["pass_count"]
+        + summary["warn_count"]
+        + summary["fail_count"]
+        == summary["checks_total"]
+    )
+
+    assert isinstance(
+        summary["checks"],
+        list,
+    )
 
 
-def test_predict_rejects_zero_exposure():
+def test_risk_score_rejects_zero_exposure():
     invalid_policy = VALID_POLICY.copy()
     invalid_policy["Exposure"] = 0
 
     response = client.post(
-        "/predict",
+        "/risk-score",
         json=invalid_policy,
     )
 
     assert response.status_code == 422
 
 
-def test_predict_rejects_unknown_field():
+def test_pure_premium_rejects_unknown_field():
     invalid_policy = VALID_POLICY.copy()
     invalid_policy["UnknownFeature"] = 123
 
     response = client.post(
-        "/predict",
+        "/pure-premium",
         json=invalid_policy,
     )
 

@@ -1,6 +1,21 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+RiskSegment = Literal[
+    "LOW",
+    "STANDARD",
+    "ELEVATED",
+    "HIGH",
+]
+
+Priority = Literal[
+    "Standard",
+    "Moderate",
+    "High",
+    "Very High",
+]
 
 
 class PolicyInput(BaseModel):
@@ -71,7 +86,24 @@ class PolicyInput(BaseModel):
     )
 
 
-class PredictionResponse(BaseModel):
+class RiskScoreResponse(BaseModel):
+    predicted_pure_premium_tweedie: float
+    expected_loss_tweedie: float
+
+    risk_segment: RiskSegment
+
+    risk_decile: int = Field(
+        ge=1,
+        le=10,
+    )
+
+    priority: Priority
+
+    recommended_action: str
+    decision_rule: str
+
+
+class PurePremiumResponse(BaseModel):
     predicted_claim_frequency: float
     expected_claim_count: float
 
@@ -83,24 +115,12 @@ class PredictionResponse(BaseModel):
     predicted_pure_premium_tweedie: float
     expected_loss_tweedie: float
 
-    risk_segment: Literal[
-        "Low",
-        "Medium",
-        "High",
-        "Very High",
-    ]
-
-    priority: Literal[
-        "Standard",
-        "Moderate",
-        "High",
-        "Very High",
-    ]
-
-    recommended_action: str
-    decision_rule: str
-
 
 class HealthResponse(BaseModel):
     status: str
     models_loaded: bool
+
+
+class DataQualitySummaryResponse(BaseModel):
+    status: str
+    summary: dict[str, Any]
