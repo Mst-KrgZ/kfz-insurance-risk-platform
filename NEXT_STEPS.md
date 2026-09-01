@@ -1,15 +1,16 @@
 # NEXT STEPS
 
-**Stand:** 25.08.2026
+**Stand:** 01.09.2026
 
 ## 1. Aktueller Projektstatus
 
-Die technischen Arbeitspakete Woche 1 bis Woche 5 wurden erfolgreich
+Die technischen Arbeitspakete Woche 1 bis Woche 6 wurden erfolgreich
 abgeschlossen beziehungsweise vorgezogen umgesetzt.
 
 Die Datenbeschaffung, Ingestion, Data-Quality-Prüfungen, Curated-Schicht,
-PostgreSQL-Analytics-Layer, explorative Datenanalyse sowie die
-Hauptmodellierung sind vollständig umgesetzt.
+PostgreSQL-Analytics-Layer, explorative Datenanalyse, Hauptmodellierung,
+Challenger-Modellierung, Explainability, Risikosegmentierung,
+Decision-Support-Logik und FastAPI sind technisch umgesetzt.
 
 Der policenbasierte Curated-Datensatz umfasst 678.013 Policen und 25 Spalten.
 
@@ -18,12 +19,10 @@ erneut aus dem versionierten Source Code aufgebaut. Der rekonstruierte
 Datensatz ist wertidentisch mit dem bestehenden `policy_curated.pq`.
 Damit ist die Curated-Pipeline reproduzierbar ausführbar.
 
-Für Frequency und Severity wird ein gemeinsamer, einmalig definierter
-Policy-Level-Train/Test-Split verwendet.
+Für Frequency, Severity und den Tweedie-Challenger wird derselbe einmalig
+definierte Policy-Level-Train/Test-Split verwendet.
 
-Nach der ursprünglichen Modellierung wurde ein Post-Audit-Quality-Pass
-durchgeführt. Dabei wurden die wichtigsten Modellannahmen und
-Validierungsverfahren erneut geprüft und gezielt verbessert.
+Es wurde kein neuer Split erzeugt.
 
 Als finale Hauptmodelle wurden festgelegt:
 
@@ -34,99 +33,154 @@ Als finale Hauptmodelle wurden festgelegt:
 
 Frequency v2 verbessert die Holdout Mean Poisson Deviance auf 0,592685,
 erreicht ein Poisson-D² von 0,0528 und eine Portfolioabweichung von nur
-−0,25 %. Der Frequency-Gini steigt gegenüber v1 von 0,2683 auf 0,2903.
+−0,25 %. Der Frequency-Gini beträgt 0,2903.
 
 Severity v2 verbessert die erste Severity-Version, bleibt auf dem Holdout
 jedoch leicht schlechter als die konstante Gamma-Baseline. Die finale
 Holdout Mean Gamma Deviance beträgt 1,567498 gegenüber 1,543630 für die
-Baseline. Die Portfolioabweichung verbessert sich von +7,19 % auf +3,99 %.
+Baseline. Die Portfolioabweichung beträgt +3,99 %.
 
 Die Severity-Komponente besitzt nur eine sehr geringe Ranking-Fähigkeit
 (Gini 0,0033). Sie wird deshalb primär zur monetären Quantifizierung der
 erwarteten Schadenhöhe eingesetzt. Frequency v2 bleibt der wichtigste
-Risikodifferenzierer.
+Risikodifferenzierer des Two-Stage-Modells.
 
-Die Pure-Premium-Auswertung wurde methodisch korrigiert. Die zuvor
-beobachtete Abweichung von +37,79 % auf dem Teilbestand mit vollständig
-beobachtbarer Schadenhöhe wird nicht als unbiased Modellkalibrierung
-interpretiert, da dieser Vergleich durch fehlende Severity-Informationen
-selektionsverzerrt ist.
-
-Die finale Pure Premium wird weiterhin berechnet als:
+Die finale Two-Stage-Pure-Premium wird berechnet als:
 
 `Predicted Pure Premium = Predicted Frequency × Predicted Severity`
 
-Lorenz- und Gini-Auswertungen wurden bereits durchgeführt.
+Die zuvor beobachtete Abweichung von +37,79 % auf dem Teilbestand mit
+vollständig beobachtbarer Schadenhöhe wird nicht als unbiased
+Modellkalibrierung verwendet, da dieser Vergleich durch fehlende
+Severity-Informationen selektionsverzerrt ist.
 
-Ergebnisse:
+Die primären Kalibrierungsaussagen bleiben:
 
-- Frequency v1 Gini: 0,2683
-- Frequency v2 Gini: 0,2903
-- Severity v1 Gini: 0,0333
-- Severity v2 Gini: 0,0033
-- Frequency-only Loss Gini: 0,2372
-- Pure-Premium-v2 Loss Gini: 0,2358
+- Frequency v2 auf vollständigem Holdout: −0,25 %
+- Severity v2 auf Severity-geeignetem Holdout: +3,99 %
 
-Die Severity-Komponente verbessert die Loss-Rangfolge gegenüber Frequency
-allein nicht. Dieses Ergebnis wird als fachliche Modellgrenze dokumentiert.
+Der direkte Tweedie-Challenger wurde anschließend auf derselben kanonischen
+Split-Logik entwickelt.
 
-Nach Abschluss der Modellauswahl wurden Frequency v2 und Severity v2 auf
-dem vollständig verfügbaren Datenbestand neu trainiert.
+Tweedie-Ziel:
 
-Finale Full-Data-Artefakte:
+`y = total_claim_amount / Exposure`
 
-- `models/frequency_poisson_quantile_spline_full_v2.joblib`
-- `models/severity_gamma_spline_scaled_full_v2.joblib`
+mit:
 
-Finale Holdout-Artefakte:
+`sample_weight = Exposure`
 
-- `models/frequency_poisson_quantile_spline_holdout_v2.joblib`
-- `models/severity_gamma_spline_scaled_holdout_v2.joblib`
+Finale Challenger-Spezifikation:
 
-Die Full-Data-Artefakte wurden erneut geladen und auf dem gesamten Portfolio
-ausgeführt.
+- `TweedieRegressor`
+- `power = 1.9`
+- `alpha = 0.0`
+- Quantile-Splines
+- `n_knots = 8`
+- `degree = 2`
+- `log_density` linear
 
-Ergebnis:
+Die Modellauswahl erfolgte ausschließlich auf Trainingsdaten.
 
-- Frequency-Prognosen exakt reproduziert
-- Severity-Prognosen exakt reproduziert
-- maximale absolute Abweichung jeweils 0,000000000000
+Auf der gemeinsamen beobachtbaren Holdout-Basis ergaben sich:
 
-Für alle 678.013 Policen wurde anschließend ein neuer finaler
-Prediction Run erzeugt.
+- konstante Baseline Mean Tweedie Deviance: 34,602470
+- Tweedie Mean Tweedie Deviance: 34,364453
+- Two-Stage Mean Tweedie Deviance: 34,356826
+- Tweedie Portfolioabweichung: +6,40 %
+- Two-Stage Portfolioabweichung: +36,29 %
+- Tweedie Gini: 0,2677
+- Two-Stage Loss Gini: ca. 0,2358
 
-Prediction Run ID:
+Damit besitzt das Two-Stage-Modell eine minimal bessere Tweedie-Deviance,
+während der direkte Tweedie-Challenger deutlich besser kalibriert ist und
+eine stärkere Ranking-Fähigkeit zeigt.
 
-`3e79d43b-d9e2-4edf-9056-be0827aa22f0`
+Es wurde deshalb keine Winner-takes-all-Entscheidung getroffen.
 
-Die finale Datei
+Weiterverwendung:
 
-`data/output/model_predictions.pq`
+- Two-Stage:
+  Frequency-/Severity-Dekomposition und monetäre Modellinterpretation
+- Tweedie:
+  direkter Pure-Premium-Risikoscore, Portfolio-Ranking und
+  Risikosegmentierung
 
-enthält:
+Die finalen Modelle wurden zusätzlich über GLM-Koeffizienten,
+Permutation Feature Importance sowie PDP-/ICE-Analysen interpretiert.
 
-- 678.013 Zeilen
-- 678.013 eindeutige `IDpol`
-- 0 Duplikate
-- 0 Missing Values
-- 1 Prediction Run
+Auf Basis der Tweedie-Pure-Premium wurden vier Risikosegmente aus der
+Portfolioverteilung abgeleitet:
 
-Die Prediction-Datei wurde erfolgreich in PostgreSQL geladen.
+- `LOW`
+- `STANDARD`
+- `ELEVATED`
+- `HIGH`
 
-PostgreSQL-Validierung:
+Grenzen:
 
-- `model_predictions`: 678.013 Zeilen
-- eindeutige `IDpol`: 678.013
-- Frequency-Modell:
-  `frequency_poisson_quantile_spline_full_v2`
-- Severity-Modell:
-  `severity_gamma_spline_scaled_full_v2`
+- P50: 119,35
+- P75: 187,90
+- P90: 328,24
 
-Damit ist der vollständige Pfad
+Segmentgrößen:
 
-`Curated Data → Modellierung → Full-Data-Refit → Artifact → Parquet → PostgreSQL`
+- LOW: 339.008 Policen
+- STANDARD: 169.508 Policen
+- ELEVATED: 101.695 Policen
+- HIGH: 67.802 Policen
 
-für die finalen v2-Hauptmodelle reproduzierbar validiert.
+Zusätzlich wurden Risk Deciles 1–10 erzeugt.
+
+Das HIGH-Segment umfasst ungefähr 10 % der Policen und konzentriert rund
+32,1 % des modellierten erwarteten Schadenaufwands.
+
+Für die Segmente wurde eine Decision-Support-Logik definiert:
+
+- `Standard process`
+- `Additional review recommended`
+- `Manual underwriting review recommended`
+
+Die FastAPI-Schicht wurde auf die finale Modell- und Segmentierungslogik
+ausgerichtet.
+
+Implementierte Endpunkte:
+
+- `GET /health`
+- `POST /risk-score`
+- `POST /pure-premium`
+- `GET /data-quality-summary`
+
+Zusätzlich umgesetzt:
+
+- Pydantic-Validierung
+- Ablehnung unbekannter Request-Felder
+- Wertebereichsvalidierung
+- HTTP-Statuscodes
+- Logging
+- strukturierte Response-Schemas
+- Swagger/OpenAPI
+
+Der vollständige Testlauf wurde erfolgreich abgeschlossen:
+
+`6 passed`
+
+Swagger wurde zusätzlich manuell geprüft. Alle vier geplanten Endpunkte
+sind unter `/docs` sichtbar und ausführbar.
+
+Die finalen Änderungen wurden versioniert und nach GitHub übertragen.
+
+Finaler Git-Status des Arbeitspakets:
+
+`nothing to commit, working tree clean`
+
+Damit sind die technischen Arbeitspakete Woche 1 bis Woche 6 abgeschlossen.
+
+Der nächste technische Schwerpunkt ist:
+
+**Power BI & Dokumentation**
+
+---
 
 ## 2. Bereits abgeschlossen
 
@@ -241,7 +295,8 @@ für die finalen v2-Hauptmodelle reproduzierbar validiert.
 - [X] 135.603 Test-Policen
 - [X] Überschneidung der `IDpol`: 0
 - [X] Frequency und Severity verwenden denselben Split
-- [X] Split wird für weitere Challenger-Modelle nicht neu erzeugt
+- [X] Tweedie verwendet denselben kanonischen Split
+- [X] Split wird nicht neu erzeugt
 
 ### Frequency v1
 
@@ -307,7 +362,7 @@ für die finalen v2-Hauptmodelle reproduzierbar validiert.
 - [X] Holdout-v2-Artefakt gespeichert
 - [X] Full-Data-v2-Artefakt gespeichert
 
-### Pure Premium und Modellvergleich
+### Pure Premium und Two-Stage-Modellvergleich
 
 - [X] `notebooks/06_model_comparison.ipynb` erstellt
 - [X] Frequency und Severity kombiniert
@@ -325,7 +380,7 @@ für die finalen v2-Hauptmodelle reproduzierbar validiert.
 - [X] Pure-Premium-Loss-Gini berechnet
 - [X] Frequency-only Loss Gini 0,2372
 - [X] Pure-Premium-v2 Loss Gini 0,2358
-- [X] finale Modellentscheidung dokumentiert
+- [X] finale Two-Stage-Modellentscheidung dokumentiert
 
 ### Finaler Full-Data-Refit und Artefakte
 
@@ -355,6 +410,109 @@ für die finalen v2-Hauptmodelle reproduzierbar validiert.
 - [X] Prediction Run ID in DBeaver geprüft
 - [X] finale v2-Modellversionen in PostgreSQL geprüft
 
+### Tweedie Challenger
+
+- [X] `notebooks/07_tweedie_model.ipynb` entwickelt
+- [X] Tweedie-Ziel als `total_claim_amount / Exposure` definiert
+- [X] Exposure als `sample_weight` verwendet
+- [X] kanonischen Policy-Level-Split weiterverwendet
+- [X] keinen neuen Split erzeugt
+- [X] Tweedie-Modellwahl ausschließlich auf Trainingsdaten durchgeführt
+- [X] konstante Tweedie-Baseline berechnet
+- [X] `power = 1.9` und `alpha = 0.0` als finale Spezifikation festgelegt
+- [X] finale Spezifikation vor Holdout-Bewertung festgelegt
+- [X] Mean Tweedie Deviance berechnet
+- [X] Portfolio-Kalibrierung berechnet
+- [X] Exposure-korrekten erwarteten Schaden berechnet
+- [X] Two-Stage und Tweedie auf identischer beobachtbarer Holdout-Basis verglichen
+- [X] Lorenz-/Gini-Auswertung durchgeführt
+- [X] Tweedie Gini 0,2677 berechnet
+- [X] Tweedie Portfolioabweichung +6,40 % dokumentiert
+- [X] Two-Stage Portfolioabweichung +36,29 % auf derselben Basis dokumentiert
+- [X] Holdout-Artefakt gespeichert
+- [X] Full-Data-Artefakt gespeichert
+- [X] `tweedie_predictions.pq` erzeugt und validiert
+
+### Explainability
+
+- [X] `notebooks/08_model_explainability.ipynb` finalisiert
+- [X] GLM-Koeffizienten für Frequency v2 extrahiert
+- [X] GLM-Koeffizienten für Severity v2 extrahiert
+- [X] GLM-Koeffizienten für Tweedie extrahiert
+- [X] Grenzen der Interpretation von Spline-Koeffizienten dokumentiert
+- [X] Permutation Feature Importance für Frequency berechnet
+- [X] Permutation Feature Importance für Severity berechnet
+- [X] Permutation Feature Importance für Tweedie berechnet
+- [X] PDP-Analysen durchgeführt
+- [X] ICE-Analysen durchgeführt
+- [X] Explainability als nicht-kausale Modellinterpretation dokumentiert
+
+### Risk Segmentation
+
+- [X] `notebooks/09_risk_segmentation.ipynb` finalisiert
+- [X] Tweedie als kanonischen Risk Score für die Segmentierung verwendet
+- [X] Segmentgrenzen aus der Portfolioverteilung abgeleitet
+- [X] `LOW` definiert
+- [X] `STANDARD` definiert
+- [X] `ELEVATED` definiert
+- [X] `HIGH` definiert
+- [X] P50 = 119,35 dokumentiert
+- [X] P75 = 187,90 dokumentiert
+- [X] P90 = 328,24 dokumentiert
+- [X] zehn Risk Deciles erzeugt
+- [X] Decile-Grenzen dokumentiert
+- [X] `risk_segments.pq` erzeugt
+- [X] 678.013 Policy-Zeilen validiert
+- [X] 0 doppelte `IDpol`
+- [X] 0 fehlende Segmente
+- [X] 0 fehlende Deciles
+
+### Business Recommendations
+
+- [X] `notebooks/10_business_recommendations.ipynb` finalisiert
+- [X] fachliche Action Matrix erstellt
+- [X] `Standard process` integriert
+- [X] `Additional review recommended` integriert
+- [X] `Manual underwriting review recommended` integriert
+- [X] Prioritäten für alle vier Segmente definiert
+- [X] Decision Rules definiert
+- [X] HIGH-Segment als manuelle Review-Empfehlung und nicht als Auto-Reject dokumentiert
+- [X] Loss-Konzentration nach Segment analysiert
+- [X] HIGH-Segment: ca. 10 % der Policen / ca. 32,1 % des erwarteten Schadens
+- [X] `management_kpi.pq` erzeugt
+- [X] `policy_action_priorities.pq` erzeugt
+
+### FastAPI
+
+- [X] `api/schemas.py` an finale Modelllogik angepasst
+- [X] `api/predictor.py` an finale Segment- und Decile-Logik angepasst
+- [X] `api/main.py` auf finale Endpunkte ausgerichtet
+- [X] `GET /health` implementiert
+- [X] `POST /risk-score` implementiert
+- [X] `POST /pure-premium` implementiert
+- [X] `GET /data-quality-summary` implementiert
+- [X] Pydantic-Validierung umgesetzt
+- [X] unbekannte Request-Felder verboten
+- [X] Exposure-Bereich validiert
+- [X] Risk Decile 1–10 in API integriert
+- [X] Business-Actions in API integriert
+- [X] HTTP-Statuscodes umgesetzt
+- [X] Logging integriert
+- [X] Swagger/OpenAPI validiert
+- [X] `/docs` manuell geprüft
+
+### Tests
+
+- [X] Health-Endpunkt getestet
+- [X] Risk-Score-Endpunkt getestet
+- [X] Pure-Premium-Endpunkt getestet
+- [X] Data-Quality-Summary-Endpunkt getestet
+- [X] Exposure = 0 wird mit 422 abgelehnt
+- [X] unbekanntes Eingabefeld wird mit 422 abgelehnt
+- [X] vollständigen Testlauf mit `python -m pytest -q` durchgeführt
+- [X] Ergebnis: `6 passed`
+- [X] externe Dependency-Warnungen als nicht testblockierend bewertet
+
 ### Dokumentation
 
 - [X] `docs/statusbericht_woche_5.md` nach Post-Audit-Review vollständig aktualisiert
@@ -363,8 +521,25 @@ für die finalen v2-Hauptmodelle reproduzierbar validiert.
 - [X] Severity-Limitierung transparent dokumentiert
 - [X] Pure-Premium-Selektionseffekt dokumentiert
 - [X] Lorenz-/Gini-Ergebnisse dokumentiert
-- [X] finale Modellentscheidung dokumentiert
+- [X] finale Two-Stage-Modellentscheidung dokumentiert
 - [X] PostgreSQL-v2-Integration dokumentiert
+- [X] Statusbericht Woche 6 inhaltlich vorbereitet
+- [X] Tweedie-Ergebnisse dokumentiert
+- [X] Explainability-Ergebnisse dokumentiert
+- [X] Risk-Segmentation-Logik dokumentiert
+- [X] Business-Action-Logik dokumentiert
+- [X] API-Endpunkte und Tests dokumentiert
+
+### Git / technischer Abschluss Woche 6
+
+- [X] API-Änderungen versioniert
+- [X] Änderungen nach GitHub übertragen
+- [X] vollständigen Regression-Test vor Abschluss durchgeführt
+- [X] Git Working Tree geprüft
+- [X] finaler Status:
+  `nothing to commit, working tree clean`
+
+---
 
 ## 3. Aktueller technischer Kontrollpunkt
 
@@ -385,11 +560,11 @@ Kanonischer Policy-Level Train/Test Split
         ↓
 Frequency v2 + Severity v2
         ↓
+Two-Stage Pure Premium
+        ↓
 Holdout Evaluation
         ↓
 Lorenz / Gini / Calibration
-        ↓
-Predicted Pure Premium
         ↓
 Finaler Full-Data-Refit
         ↓
@@ -403,7 +578,190 @@ model_predictions.pq
         ↓
 PostgreSQL model_predictions
         ↓
-vw_model_prediction_analysis
+Tweedie Challenger
         ↓
-Power BI / Challenger / Decision Support
+Two-Stage vs. Tweedie
+        ↓
+Explainability
+        ↓
+Risk Segmentation + Deciles
+        ↓
+Business Recommendations
+        ↓
+Decision-Support-Artefakte
+        ↓
+FastAPI
+        ↓
+Pydantic / Logging / Swagger
+        ↓
+6 API-Tests
+        ↓
+Power BI & Dokumentation
 ```
+
+Der modellierungs- und API-seitige technische Kern ist damit abgeschlossen.
+
+Ab jetzt wird nicht mehr in neue Frequency-, Severity- oder
+Tweedie-Tuning-Schleifen eingestiegen, sofern kein technischer Fehler
+entdeckt wird.
+
+---
+
+## 4. Nächster technischer Arbeitsschritt
+
+### Power BI & Dokumentation
+
+Der nächste technische Arbeitsschritt folgt dem Projektfahrplan.
+
+### Power BI
+
+#### Seite 1 · Portfolio Overview 🔴
+
+Ziel:
+
+> Wie sieht das Portfolio aus?
+
+Geplante Inhalte:
+
+- [ ] Policenzahl
+- [ ] Exposure
+- [ ] beobachtete Frequency
+- [ ] Schadensumme
+- [ ] beobachtete Severity
+- [ ] Observed Pure Premium
+- [ ] zentrale Filter
+- [ ] saubere Management-KPIs
+
+#### Seite 2 · Risk Segmentation 🔴
+
+Ziel:
+
+> Wo konzentriert sich Risiko?
+
+Geplante Inhalte:
+
+- [ ] Risk-Segment-Verteilung
+- [ ] Risk-Decile-Verteilung
+- [ ] Risiko nach Fahreralter
+- [ ] Risiko nach Fahrzeugalter
+- [ ] Risiko nach BonusMalus
+- [ ] Risiko nach Region
+- [ ] Observed vs. Predicted
+- [ ] HIGH-Segment und Loss-Konzentration sichtbar machen
+
+#### Seite 3 · Expected Loss & Pure Premium 🔴
+
+Ziel:
+
+> Wo sind die höchsten Risikokosten?
+
+Geplante Inhalte:
+
+- [ ] Predicted Frequency
+- [ ] Predicted Severity
+- [ ] Two-Stage Pure Premium
+- [ ] Tweedie Pure Premium
+- [ ] Expected Loss
+- [ ] Verteilungen
+- [ ] Top-Risikoprofile
+- [ ] Kalibrierung
+- [ ] fachlich klare Trennung zwischen annualisierter Pure Premium und
+  Exposure-korrigiertem Expected Loss
+
+#### Seite 4 · Data Quality & Model Validation 🟡
+
+Ziel:
+
+> Können wir Daten und Modell vertrauen?
+
+Geplante Inhalte:
+
+- [ ] Data-Quality-Ergebnisse
+- [ ] Pipeline-Status
+- [ ] Frequency-Modellmetriken
+- [ ] Severity-Modellmetriken
+- [ ] Tweedie-Modellmetriken
+- [ ] Modellversionen
+- [ ] dokumentierte Modellgrenzen
+
+Diese vierte Seite ist SHOULD und wird umgesetzt, sofern die drei
+Kernseiten sauber abgeschlossen sind.
+
+### Dokumentation
+
+- [ ] `README.md` finalisieren
+  - Problem
+  - Geschäftsfrage
+  - Architektur
+  - Setup
+  - Ausführung
+  - zentrale Ergebnisse
+  - Grenzen
+- [ ] `docs/model_card.md` erstellen/finalisieren
+  - Zweck
+  - Datenbasis
+  - Zielgrößen
+  - Features
+  - Modellversionen
+  - Metriken
+  - Grenzen
+  - wofür das Modell nicht verwendet werden darf
+- [ ] `docs/data_dictionary.md` finalisieren
+- [ ] Architekturdiagramm final einbinden
+- [ ] `docs/data_quality_report.md` final prüfen
+- [ ] bestehende Kerntests und Ausführung dokumentieren
+- [ ] Abschnitt `Subgroup Performance & Responsible Use` erstellen
+  - observed vs. predicted nach geeigneten Gruppen
+  - Fahreralter
+  - Region
+  - Area / Density
+  - kompakt halten: ein Abschnitt, später eine Präsentationsfolie
+- [ ] Statusbericht #7 vorbereiten
+
+---
+
+## 5. Feste Entscheidungen für den Wiedereinstieg
+
+Diese Punkte werden nicht erneut aufgerollt:
+
+- Canonical Train/Test Split bleibt unverändert.
+- Frequency v2 ist final.
+- Severity v2 ist final.
+- Tweedie v1 ist als direkter Challenger final.
+- Kein neues Frequency-/Severity-Tuning.
+- Kein Holdout-basiertes Nachoptimieren.
+- Exposure-Logik bleibt zwingend erhalten.
+- Pure Premium ist annualisiert.
+- Expected Loss wird immer mit Exposure berechnet.
+- Severity-Limitierung wird transparent beibehalten.
+- +37,79 % ist keine Headline-Kalibrierungsmetrik.
+- Tweedie wird für Risk Score und Segmentierung verwendet.
+- Two-Stage bleibt für Frequency-/Severity-Dekomposition erhalten.
+- Risk Segments bleiben:
+  `LOW` · `STANDARD` · `ELEVATED` · `HIGH`
+- Risk Deciles bleiben 1–10.
+- Handlungsempfehlungen bleiben Decision Support.
+- `HIGH` bedeutet keine automatische Ablehnung.
+- LightGBM wird nicht zusätzlich untersucht.
+- SHAP wird nicht zusätzlich benötigt.
+- API-Endpunkte bleiben:
+  `/health` · `/risk-score` · `/pure-premium` · `/data-quality-summary`
+- Bestehende API-Tests sind grün: `6 passed`.
+- Nächster Fokus ist Power BI und Dokumentation.
+
+---
+
+## 6. Direkter Startpunkt beim nächsten Arbeiten
+
+Nicht erneut bei Modellierung anfangen.
+
+Der direkte Wiedereinstieg lautet:
+
+1. Power-BI-Datenbasis und vorhandene Output-/PostgreSQL-Quellen prüfen.
+2. Benötigte Tabellen und Beziehungen für die vier Dashboard-Seiten festlegen.
+3. Mit `Portfolio Overview` beginnen.
+4. Danach `Risk Segmentation`.
+5. Danach `Expected Loss & Pure Premium`.
+6. Erst danach die optionale Seite `Data Quality & Model Validation`.
+7. Parallel nur die unmittelbar benötigte Dokumentation aktualisieren.
+8. Keine neuen Modellversuche starten, solange kein technischer Fehler vorliegt.
