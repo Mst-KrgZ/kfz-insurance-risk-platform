@@ -674,7 +674,6 @@ Severity-Zeilen zur Verfügung.
 | Erwartete und tatsächliche Join-Zeilenanzahl identisch                | PASS   | Severity wurde vor dem policenbasierten Join nach`IDpol` aggregiert; die One-to-Many-Struktur bleibt für Claim-Level-Analysen erhalten                                                                                                                | Dadurch bleibt der policenbasierte Curated-Datensatz bei genau einer Zeile pro Police und eine unerwartete Join-Vervielfachung wird vermieden |
 | Keine fehlenden Zellwerte in den Rohdatensätzen                       | PASS   | Keine klassische Missing-Value-Imputation erforderlich; durch fehlende Severity-Verknüpfungen entstehende unbekannte Schadenhöhen werden separat über`missing_severity` behandelt                                                                   | Die beiden Ausgangsdatensätze sind auf Zellebene vollständig, die unvollständige Severity-Abdeckung ist dagegen ein referenzielles Problem |
 
-
 ## Modellierungsdatenbestände
 
 Aus den Datenqualitätsprüfungen und der inzwischen umgesetzten
@@ -761,3 +760,64 @@ gezielt in der jeweiligen Modeling-Schicht.
 Die verbleibenden Auffälligkeiten, insbesondere Großschäden, hohe
 Schadenanzahlen und potenziell doppelte Severity-Zeilen, werden in der
 explorativen Analyse und späteren Modellvalidierung weiter untersucht.
+
+## Finaler Modellierungs- und Evaluationsstatus
+
+Die ursprünglich definierten Data-Quality-Regeln wurden im weiteren Projektverlauf vollständig in die finale Modellierungs- und Evaluationslogik übernommen.
+
+Die finalen Evaluationspopulationen unterscheiden sich abhängig von der jeweiligen Zielgröße:
+
+| Modell / Analyse          | Finale Holdout-Population | Begründung                                                                                                              |
+| ------------------------- | ------------------------: | ------------------------------------------------------------------------------------------------------------------------ |
+| Frequency                 |           135.603 Policen | `ClaimNb` ist unabhängig von vorhandener Severity vollständig beobachtbar                                            |
+| Severity                  |             4.999 Policen | Nur Policen mit beobachtbarer positiver Schadenhöhe und konsistenter Schadeninformation                                 |
+| Tweedie / Loss Evaluation |           133.790 Policen | Schadenfreie Policen bleiben enthalten; Policen mit Schaden, aber fehlender beobachtbarer Severity werden ausgeschlossen |
+
+Für die Severity-Evaluation umfasst der finale Holdout:
+
+- 4.999 Severity-eligible Policen,
+- 5.312 beobachtete Schäden,
+- 11.055.690,67 € beobachteten Schadenaufwand,
+- eine claim-gewichtete beobachtete Severity von 2.081,27 €.
+
+Für die direkte Tweedie-/Loss-Evaluation umfasst der gemeinsame beobachtbare Holdout 133.790 Policen. Darunter befinden sich:
+
+- 128.791 schadenfreie Policen,
+- 4.999 Policen mit beobachtbarer positiver Schadenhöhe.
+
+Damit wird weiterhin strikt zwischen:
+
+- `kein Schaden`,
+- `Schadenhöhe beobachtbar`,
+- und `Schadenhöhe unbekannt`
+
+unterschieden.
+
+### Bedeutung der DQ-Status in Reporting und Power BI
+
+Die Statuswerte `PASS`, `WARN` und `FAIL` dokumentieren Befunde der **Quelldatenprüfung**.
+
+Ein `FAIL` bedeutet daher nicht automatisch, dass der finale Curated-Datensatz technisch fehlerhaft oder für die Modellierung unbrauchbar ist.
+
+Beispielsweise werden:
+
+- `Exposure > 1` in der Curated-Schicht kontrolliert behandelt,
+- fehlende Severity-Beobachtungen explizit gekennzeichnet,
+- Orphan-Severity-Records aus der analytischen Modellierung ausgeschlossen,
+- und Inkonsistenzen zwischen `ClaimNb` und vorhandenen Severity-Records transparent dokumentiert.
+
+Die DQ-Ergebnisse beschreiben damit sowohl die ursprünglichen Datenprobleme als auch die fachlichen Entscheidungen, mit denen diese Probleme in den nachgelagerten Analyse- und Modellierungsschichten behandelt wurden.
+
+### Finaler Status
+
+Die Data-Quality-Schicht bildet die methodische Grundlage der finalen Modellierungsarchitektur.
+
+Insbesondere wurden die DQ-Befunde verwendet, um:
+
+- die zulässigen Modellierungs- und Evaluationspopulationen eindeutig zu definieren,
+- fehlende Severity nicht fälschlich als Schadenhöhe null zu interpretieren,
+- strikt positive Severity-Ziele für die Gamma-Modellierung sicherzustellen,
+- Exposure fachlich kontrolliert zu behandeln,
+- und unterschiedliche Beobachtungsuniversen in Frequency-, Severity- und Pure-Premium-Analysen transparent zu kommunizieren.
+
+Die im Bericht dokumentierten Auffälligkeiten sind daher nicht nur explorative Befunde, sondern Bestandteil der finalen Daten- und Modellierungslogik der Plattform.
