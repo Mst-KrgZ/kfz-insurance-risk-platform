@@ -1,4 +1,3 @@
-
 # Model Card – Kfz Insurance Risk & Pure Premium Intelligence Platform
 
 ## 1. Zweck
@@ -62,7 +61,9 @@ Die finale Policy-Level-Datenbasis umfasst:
 
 **678.013 Policen**
 
-Die Daten werden reproduzierbar beschafft, einer systematischen Data-Quality-Prüfung unterzogen und anschließend in einer Curated-Schicht auf Policy-Grain verarbeitet.
+Die Daten stammen aus OpenML. Der ursprünglich geplante automatisierte Abruf über die OpenML-API wurde aufgrund wiederholter HTTP-504-Fehler nicht als alleiniger Bezugsweg verwendet.
+
+Die Datensätze wurden deshalb direkt vom OpenML Static Data Server heruntergeladen und unverändert in der lokalen Raw-Data-Schicht gespeichert. Die Ingestion-Pipeline validiert diese Quelldateien anschließend anhand von Manifestinformationen, Dateigröße, SHA256-Checksummen, Metadaten und Schema-Prüfungen.
 
 Eine Policy entspricht dabei einer eindeutigen `IDpol`.
 

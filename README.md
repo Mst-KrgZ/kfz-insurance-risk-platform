@@ -26,7 +26,7 @@ Die Plattform verbindet diese Perspektiven zu einem transparenten und reproduzie
 
 Das Projekt umfasst unter anderem:
 
-- reproduzierbare Datenbeschaffung aus OpenML,
+- reproduzierbare Datenbereitstellung aus OpenML mit verifiziertem lokalem Raw-Layer,
 - systematische Datenqualitätsprüfungen,
 - Aggregation der Schadendaten auf Policenebene,
 - PostgreSQL-basiertes analytisches Datenmodell,
@@ -157,7 +157,12 @@ Für das Projekt werden zwei öffentlich verfügbare Kfz-Versicherungsdatensätz
 - **freMTPL2freq** – Policen-, Exposure-, Fahrer-, Fahrzeug- und Schadenanzahlinformationen
 - **freMTPL2sev** – beobachtete Schadenhöhen auf Schadenebene
 
-Die Daten werden reproduzierbar über die Ingestion-Pipeline beschafft und zunächst unverändert in der Raw-Data-Schicht gespeichert.
+
+Die Daten stammen aus OpenML. Der ursprünglich geplante automatisierte Abruf über die OpenML-API wurde aufgrund wiederholter HTTP-504-Fehler nicht als alleinige produktive Datenquelle verwendet.
+
+Die beiden freMTPL2-Datensätze wurden deshalb direkt vom OpenML Static Data Server heruntergeladen und unverändert in der lokalen Raw-Data-Schicht gespeichert. Die Ingestion-Pipeline validiert diese lokalen Quelldateien anschließend anhand von Manifestinformationen, Dateigröße, SHA256-Checksummen, Metadaten und Schema-Prüfungen.
+
+Dadurch bleibt die Datenbasis reproduzierbar und überprüfbar, ohne bei jedem Pipeline-Lauf von der Verfügbarkeit der externen API abhängig zu sein.
 
 ### Zentrale Datenbestände
 
@@ -500,6 +505,18 @@ Datei:
 
 Das Dashboard kombiniert PostgreSQL-Daten mit finalen Policy-Level-Modelloutputs.
 
+### Interaktivität & Navigation
+
+Das Dashboard ist als interaktive Analyseoberfläche aufgebaut und umfasst unter anderem:
+
+- eine einheitliche Seitennavigation über alle vier Dashboard-Seiten,
+- Region-Filter mit lesbaren Regionalbezeichnungen anstelle technischer Region-Codes,
+- seitenbezogene Reset-Funktionen zum Zurücksetzen der Filterauswahl,
+- einen DQ-STATUS-Filter für PASS-, WARN- und FAIL-Prüfungen,
+- Cross-Filtering zwischen ausgewählten Visualisierungen und KPI-Karten.
+
+Die zugrunde liegenden Region-Codes bleiben im Datenmodell unverändert erhalten. Für die Darstellung im Dashboard wird eine separate Region-Dimension verwendet, damit die technische Datenbasis nicht verändert wird und gleichzeitig eine benutzerfreundliche Darstellung möglich ist.
+
 ### Dashboard-Seiten
 
 #### 1. Portfolio Overview
@@ -792,7 +809,6 @@ Das finale Dashboard befindet sich unter:
 
 Da die `.pbix`-Datei die reguläre GitHub-Dateigrößenbegrenzung überschreitet, wird sie im Repository über **Git LFS** versioniert.
 
-
 ## Repository-Struktur
 
 Das Repository ist modular aufgebaut, sodass Datenverarbeitung, Modellierung, technische Bereitstellung und Dokumentation klar voneinander getrennt bleiben.
@@ -838,8 +854,9 @@ kfz-insurance-risk-platform/
 │   └── 11_subgroup_performance.ipynb
 │
 ├── powerbi/
-│   └── kfz_insurance_risk_dashboard.pbix
-│
+│   ├── kfz_insurance_risk_dashboard.pbix
+│   └── dashboard_assets/
+│   
 ├── sql/
 │
 ├── src/
@@ -878,7 +895,7 @@ kfz-insurance-risk-platform/
 | `docs/`           | Fachliche Dokumentation, Data Quality und Statusberichte                                |
 | `models/`         | Persistierte Modellartefakte                                                            |
 | `notebooks/`      | Analytischer Workflow von Datenverständnis bis Subgruppen-Diagnostik                   |
-| `powerbi/`        | Finale Power-BI-Datei                                                                   |
+| `powerbi/`        | Finale Power-BI-Datei und zugehörige Dashboard-Assets                                  |
 | `sql/`            | SQL-Skripte und Datenbankdefinitionen                                                   |
 | `src/`            | Reproduzierbare Python-Module für Ingestion, DQ, Preprocessing, Features und Datenbank |
 | `tests/`          | Automatisierte technische Tests                                                         |
