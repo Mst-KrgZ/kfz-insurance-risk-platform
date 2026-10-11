@@ -12,4 +12,4 @@ data/output/
 
 # Generated curated datasets
 data/processed/*.pq
-data/processed/*.parquet
+data/processed/*.parquetdocs/Zeiterfassung_Abschlussprojekt.xlsx
