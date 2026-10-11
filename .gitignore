@@ -4,12 +4,18 @@ __pycache__/
 .env
 .ipynb_checkpoints/
 .vscode/
+
+# Raw data
 data/raw/*.pq
 data/raw/*.parquet
 data/raw/*.arff
+
 # Generated ingestion outputs and logs
 data/output/
 
 # Generated curated datasets
 data/processed/*.pq
-data/processed/*.parquetdocs/Zeiterfassung_Abschlussprojekt.xlsx
+data/processed/*.parquet
+
+# Personal documentation
+docs/Zeiterfassung_Abschlussprojekt.xlsx
